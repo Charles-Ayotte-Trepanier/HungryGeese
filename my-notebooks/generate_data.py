@@ -553,13 +553,13 @@ discount = 1
 nb_opponents = 1
 
 steps_per_ep = 200
-num_episodes = 10000
+num_episodes = 1000
 
 
 env = make("hungry_geese", debug=True)
 config = env.configuration
 import pickle
-for it in range(10):
+for it in range(100):
     print(f'starting iteration {it}')
     name = f'it_{it}.pkl'
     episodes = []
