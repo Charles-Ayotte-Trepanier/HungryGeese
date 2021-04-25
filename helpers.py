@@ -234,9 +234,9 @@ def add_next_state(steps):
             step['next_food_position_vector'] = steps[i+1]['food_position_vector']
             step['next_numerical'] = steps[i+1]['numerical']
         else:
-            step['next_embeddings'] = None
-            step['next_food_position_vector'] = None
-            step['next_numerical'] = None
+            step['next_embeddings'] = steps[i]['embeddings']
+            step['next_food_position_vector'] = steps[i]['food_position_vector']
+            step['next_numerical'] = steps[i]['numerical']
 
 
 def process(discount, episodes):
@@ -265,10 +265,12 @@ def training_data(episodes):
             targets.append(target)
             num = step['numerical']
             emb = step['embeddings']
-            next_numerical = step['next_numerical']
-            next_embeddings = step['next_embeddings']
+            next_num = step['next_numerical']
+            next_emb = step['next_embeddings']
             numerical.append(num)
             embeddings.append(emb)
+            next_numerical.append(next_num)
+            next_embeddings.append(next_emb)
             actions.append(action)
             v.append(step['v'])
             done.append(step['done'])
@@ -279,12 +281,16 @@ def training_data(episodes):
     n = [np.array(numerical)[:, i].reshape(-1, 1) for i in range(5)]
     train = n+e
 
-    if not done:
-        e_next = [np.array(next_embeddings)[:, i].reshape(-1, 1) for i in range(7*11)]
-        n_next = [np.array(next_numerical)[:, i].reshape(-1, 1) for i in range(5)]
-        train_next = n_next+e_next
-    else:
-        train_next = None
+    e_next = [np.array(next_embeddings)[:, i].reshape(-1, 1) for i in range(7 * 11)]
+    n_next = [np.array(next_numerical)[:, i].reshape(-1, 1) for i in range(5)]
+    train_next = n_next + e_next
+
+    # if not done:
+    #     e_next = [np.array(next_embeddings)[:, i].reshape(-1, 1) for i in range(7*11)]
+    #     n_next = [np.array(next_numerical)[:, i].reshape(-1, 1) for i in range(5)]
+    #     train_next = n_next+e_next
+    # else:
+    #     train_next = None
 
     training_dict = {'state': train,
                      'action': actions,

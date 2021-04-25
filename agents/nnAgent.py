@@ -10,6 +10,9 @@ from tensorflow import keras
 from tensorflow.keras.callbacks import Callback, EarlyStopping
 from sklearn.metrics import roc_auc_score, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
+from tensorflow.python.framework.ops import disable_eager_execution
+
+disable_eager_execution()
 
 def train_test_splitter(X, y, test_ratio, v=None):
     train, test = train_test_split(range(y.shape[0]), test_size=test_ratio)
@@ -26,30 +29,31 @@ def train_test_splitter(X, y, test_ratio, v=None):
 
 
 class nnModel:
-    def __init__(self, prediction_type):
+    def __init__(self, prediction_type, entropy_weight=0.1):
         self.prediction_type = prediction_type
         self.model = None
+        self.entropy_weight = entropy_weight
 
     def build_model(self, embedding_size=2, all_trainable=True):
 
         if self.prediction_type == 'policy':
             activation = 'softmax'
-            loss = 'categorical_crossentropy'
+            cur_loss = 'categorical_crossentropy'
             metrics = ['accuracy', 'AUC']
             output_dim = 4
         elif self.prediction_type == 'win_prob':
             activation = 'sigmoid'
-            loss = 'binary_crossentropy'
+            cur_loss = 'binary_crossentropy'
             metrics = ['accuracy', 'AUC']
             output_dim = 1
         elif self.prediction_type == 'state_value':
             activation = 'linear'
-            loss = 'mean_absolute_error'
+            cur_loss = 'mean_absolute_error'
             metrics = ['mae']
             output_dim = 1
         elif self.prediction_type == 'actor_critic':
             activation = 'softmax'
-            metrics = ['accuracy', 'AUC']
+            metrics = []
             output_dim = 4
 
         embedding = Embedding(17, embedding_size, input_length=1, trainable=all_trainable)
@@ -80,33 +84,52 @@ class nnModel:
         model = BatchNormalization()(model)
         model = Dense(10, activation='elu')(model)
 
-        final = Dense(output_dim, activation='linear')(model)
-        act = 
-        m = Model(inputs, model)
+        pred = Dense(output_dim, activation=activation)(model)
 
         if self.prediction_type == 'actor_critic':
-            advantage = [Input(shape=1)]
-            loss =
+            advantage = Input(shape=(1, ))
+            advantage_input = [advantage]
+
+            def custom_loss(y_true, y_pred, advantage):
+                log_softmax = tf.math.log(y_pred)
+                entropy = -tf.math.reduce_sum(log_softmax * y_pred)
+                selected_action = tf.math.reduce_sum(y_true*log_softmax, axis=0)
+                selected_action_weighted = selected_action * advantage
+                J = tf.math.reduce_mean(selected_action_weighted)
+                entropy_weights = self.entropy_weight*entropy
+                l = -(J + entropy_weights)
+                return l
+
+            def cur_loss(y_true, y_pred):
+                return custom_loss(y_true, y_pred, advantage)
+
         else:
-            advantage = []
-        m = Model(inputs + advantage, model)
+            advantage_input = []
+
+        m = Model(inputs + advantage_input, pred)
 
         m.compile(optimizer='adam',
-                  loss=loss,
-                  metrics=metrics)
+                  loss=cur_loss,
+                  metrics=metrics,
+                  experimental_run_tf_function=False)
         self.model = m
 
-    def replace_weights(self, policy_model):
-        policy_weights = policy_model.get_weights()
+    def replace_partial_weights(self, policy_model):
+        policy_weights = policy_model.model.get_weights()
         cur_weights = self.model.get_weights()
         for i in range(20):
             cur_weights[i] = policy_weights[i]
         self.model.set_weights(cur_weights)
 
+    def replace_weights(self, other_model):
+        self.model.set_weights(other_model.model.get_weights())
+
     def predict(self, X):
+        if (len(X) == 82) and (self.prediction_type == 'actor_critic'): #missing advantage
+            X = X + [np.zeros(shape=X[0].shape)]
         return self.model.predict(X)
 
-    def fit(self, X_train, y_train, X_test, y_test, epoch=1, batch_size=32):
+    def fit(self, X_train, y_train, X_test=None, y_test=None, epoch=1, batch_size=32):
         def reset_weights(model):
             session = keras.get_session()
             for layer in model.layers:
@@ -143,8 +166,11 @@ class nnModel:
                                    monitor='validation',
                                    mode='max')
 
-        callbacks = [perf_callback(X_test, y_test, self.prediction_type ),
-                     early_stop]
+        if X_test is not None:
+            callbacks = [perf_callback(X_test, y_test, self.prediction_type ),
+                         early_stop]
+        else:
+            callbacks = []
 
         self.model.fit(X_train,
                        y_train,
