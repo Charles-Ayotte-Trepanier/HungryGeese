@@ -11,6 +11,7 @@ from tensorflow.keras.callbacks import Callback, EarlyStopping
 from sklearn.metrics import roc_auc_score, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from tensorflow.python.framework.ops import disable_eager_execution
+import pickle
 
 disable_eager_execution()
 
@@ -84,15 +85,21 @@ class nnModel:
         model = BatchNormalization()(model)
         model = Dense(10, activation='elu')(model)
 
-        pred = Dense(output_dim, activation=activation)(model)
+        #pred = Dense(output_dim, activation=activation)(model)
 
+        logit = Dense(output_dim, activation='linear')(model)
+
+        pred = Activation(activation=activation)(logit)
         if self.prediction_type == 'actor_critic':
             advantage = Input(shape=(1, ))
             advantage_input = [advantage]
 
-            def custom_loss(y_true, y_pred, advantage):
-                log_softmax = tf.math.log(y_pred)
-                entropy = -tf.math.reduce_sum(log_softmax * y_pred)
+            def custom_loss(y_true, y_pred, advantage, logit):
+                # testing = y_pred + 0.001
+                # y_pred = testing / tf.math.reduce_sum(testing)
+                log_softmax = tf.math.log_softmax(logit)
+                softmax = tf.math.softmax(logit)
+                entropy = -tf.math.reduce_sum(log_softmax * softmax)
                 selected_action = tf.math.reduce_sum(y_true*log_softmax, axis=0)
                 selected_action_weighted = selected_action * advantage
                 J = tf.math.reduce_mean(selected_action_weighted)
@@ -100,8 +107,10 @@ class nnModel:
                 l = -(J + entropy_weights)
                 return l
 
-            def cur_loss(y_true, y_pred):
-                return custom_loss(y_true, y_pred, advantage)
+            def reinforce_loss(y_true, y_pred):
+                return custom_loss(y_true, y_pred, advantage, logit)
+
+            cur_loss = reinforce_loss
 
         else:
             advantage_input = []
@@ -186,3 +195,14 @@ class nnModel:
     def save(self, name):
         path = f'/home/charles/PycharmProjects/HungryGeese/models/{name}'
         self.model.save(path)
+
+    def save_weights(self, name):
+        path = f'/home/charles/PycharmProjects/HungryGeese/models/{name}_weights.pkl'
+        with open(path, 'wb') as f:
+            pickle.dump(self.model.get_weights(), f)
+
+    def load_weights(self, name):
+        path = f'/home/charles/PycharmProjects/HungryGeese/models/{name}_weights.pkl'
+        with open(path, 'rb') as f:
+            weights = pickle.load(f)
+        self.model.set_weights(weights)
