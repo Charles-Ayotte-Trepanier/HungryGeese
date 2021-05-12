@@ -1,8 +1,8 @@
 import os
 from math import ceil
 import numpy as np
-from tensorflow.keras.layers import Dense,Input, Embedding, concatenate,\
-    Flatten, Average, Dropout, BatchNormalization, Activation
+from tensorflow.keras.layers import Dense, Input, Embedding, concatenate,\
+    Flatten, Average, Dropout, BatchNormalization, Activation, Concatenate
 from tensorflow.keras import Sequential, Model
 from tensorflow import config, distribute
 import tensorflow as tf
@@ -30,10 +30,11 @@ def train_test_splitter(X, y, test_ratio, v=None):
 
 
 class nnModel:
-    def __init__(self, prediction_type, entropy_weight=0.1):
+    def __init__(self, prediction_type, entropy_weight=0.1, learning_rate=0.001):
         self.prediction_type = prediction_type
         self.model = None
         self.entropy_weight = entropy_weight
+        self._learning_rate = learning_rate
 
     def build_model(self, embedding_size=2, all_trainable=True):
 
@@ -85,39 +86,35 @@ class nnModel:
         model = BatchNormalization()(model)
         model = Dense(10, activation='elu')(model)
 
-        #pred = Dense(output_dim, activation=activation)(model)
-
-        logit = Dense(output_dim, activation='linear')(model)
-
-        pred = Activation(activation=activation)(logit)
         if self.prediction_type == 'actor_critic':
+            pred = Dense(output_dim, activation='linear')(model)
             advantage = Input(shape=(1, ))
             advantage_input = [advantage]
 
-            def custom_loss(y_true, y_pred, advantage, logit):
-                # testing = y_pred + 0.001
-                # y_pred = testing / tf.math.reduce_sum(testing)
-                log_softmax = tf.math.log_softmax(logit)
-                softmax = tf.math.softmax(logit)
-                entropy = -tf.math.reduce_sum(log_softmax * softmax)
-                selected_action = tf.math.reduce_sum(y_true*log_softmax, axis=0)
-                selected_action_weighted = selected_action * advantage
+            def custom_loss(y_true, y_pred, advantage):
+                log_softmax = tf.math.log_softmax(y_pred)
+                softmax = tf.math.softmax(y_pred)
+                entropy = -tf.math.reduce_sum(tf.math.multiply(log_softmax, softmax), axis=0)
+                selected_action = tf.math.reduce_sum(tf.math.multiply(y_true, log_softmax), axis=0)
+                selected_action_weighted = tf.math.multiply(selected_action, advantage)
                 J = tf.math.reduce_mean(selected_action_weighted)
-                entropy_weights = self.entropy_weight*entropy
+                entropy_weights = self.entropy_weight*tf.math.reduce_mean(entropy)
                 l = -(J + entropy_weights)
                 return l
 
             def reinforce_loss(y_true, y_pred):
-                return custom_loss(y_true, y_pred, advantage, logit)
+                return custom_loss(y_true, y_pred, advantage)
 
             cur_loss = reinforce_loss
 
         else:
             advantage_input = []
+            pred = Dense(output_dim, activation=activation)(model)
 
         m = Model(inputs + advantage_input, pred)
 
-        m.compile(optimizer='adam',
+        optimizer = tf.keras.optimizers.Adam(lr=self._learning_rate)
+        m.compile(optimizer=optimizer,
                   loss=cur_loss,
                   metrics=metrics,
                   experimental_run_tf_function=False)

@@ -67,6 +67,6 @@ class PolicyModelAgent:
         if self.greedy:
             action = pred_to_action_greedy(pred)
         else:
-            action = pred_to_action(pred/np.sum(pred))
+            action = pred_to_action(np.exp(pred)/np.sum(np.exp(pred)))
 
         return action
