@@ -9,14 +9,14 @@ import numpy as np
 from copy import deepcopy
 
 steps_per_ep = 200
-nb_opponents = 1
+nb_opponents = 7
 
 env = make("hungry_geese", debug=False)
 config = env.configuration
 
 validation_ratio = 0
 
-initial_learning_rate = 0.001
+initial_learning_rate = 0.1
 def food_G(rewards):
     rewards_back = rewards[::-1]
     v_prime = 0
@@ -60,19 +60,25 @@ def transform_sample(samples):
 
     food = np.concatenate([sample['cur_state'][2].reshape(1, 4) for sample in samples], axis=0)
     forbidden = np.concatenate([sample['cur_state'][1].reshape(1, 4) for sample in samples], axis=0)
-    embedding = np.concatenate([sample['cur_state'][0].reshape(1, 24) for sample in samples],
-                               axis=0)
+    top = np.concatenate([sample['cur_state'][0][0].reshape(1, 3) for sample in samples], axis=0)
+    right = np.concatenate([sample['cur_state'][0][1].reshape(1, 3) for sample in samples], axis=0)
+    bottom = np.concatenate([sample['cur_state'][0][2].reshape(1, 3) for sample in samples], axis=0)
+    left = np.concatenate([sample['cur_state'][0][3].reshape(1, 3) for sample in samples], axis=0)
+
     step_reward = [sample['step_reward'] for sample in samples]
     food_reward = [sample['food_reward'] for sample in samples]
-    step_G = compute_G(step_reward, 0.2)
-    food_G = compute_G(food_reward, 0.75)
+    step_G = compute_G(step_reward, 0)
+    food_G = 0#compute_G(food_reward, 0.75)
     g = np.array(step_G).reshape(-1, 1) + np.array(food_G).reshape(-1, 1)
     g = (g-np.mean(g)) / (np.std(g) + 1E-5)
     y = np.concatenate([sample['action'].reshape(1, 4) for sample in samples], axis=0)
-    return [forbidden[train], embedding[train], food[train], g[train]], y[train],\
+    return [forbidden[train], top[train], right[train], bottom[train], left[train],
+            g[train]], y[train],\
            [forbidden[test] if len(test) > 0 else np.array([]),
-            embedding[test] if len(test) > 0 else np.array([]),
-            food[test] if len(test) > 0 else np.array([]),
+            top[test] if len(test) > 0 else np.array([]),
+            right[test] if len(test) > 0 else np.array([]),
+            bottom[test] if len(test) > 0 else np.array([]),
+            left[test] if len(test) > 0 else np.array([]),
             g[test] if len(test) > 0 else np.array([])],\
            y[test] if len(test) > 0 else np.array([])
 
@@ -145,6 +151,10 @@ def run_game(nb_opponents, my_agent):
 if __name__ == "__main__":
 
     agent = ShortSightAgentNoFood(learning_rate=initial_learning_rate)
+    # embeddings = np.array([1, -1]).reshape(2, 1)
+    # dense = np.array([4, 10, 4]).reshape(3, 1)
+    # bias = np.array([0]).reshape(1, )
+    # agent.model.set_weights([embeddings, dense, bias])
     #agent.load_weights('ShortSightAgentNoFood')
     best_score = 0
     i = 1
@@ -152,7 +162,7 @@ if __name__ == "__main__":
         samples = []
         avg_duration = []
         nb_games = 100 * (1+int(float(iteration)/10))
-        nb_games = 5*min(nb_games, 1000)
+        nb_games = min(nb_games, 1000)
         print(f'# games to play: {nb_games}')
         for _ in range(nb_games):
             cur_game = run_game(nb_opponents, agent)
@@ -168,12 +178,14 @@ if __name__ == "__main__":
             best_score = avg_nb_steps
             print('Saving Weights')
             agent.save_weights('ShortSightAgentNoFood')
+            agent.fit(X, y, X_val, y_val, batch_size=9999999)
         elif avg_nb_steps < best_score*0.95:
             print('Reducing learning rate')
             agent = ShortSightAgentNoFood(learning_rate=initial_learning_rate*(0.01**i))
             agent.load_weights('ShortSightAgentNoFood')
             i += 1
-        agent.fit(X, y, X_val, y_val)
+        else:
+            agent.fit(X, y, X_val, y_val, batch_size=9999999)
 
         if i > 5:
             break

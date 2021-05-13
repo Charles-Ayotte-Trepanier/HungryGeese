@@ -7,7 +7,7 @@ def get_encoding(part, food_vector):
         'head': 1,
         'body': 2,
         'tail': 3,
-        'food': 4
+        'food': 0
     }
 
     if food_vector:
@@ -78,7 +78,7 @@ class FeaturesCreator:
     def get_features(self, obs_dict, last_action, board_size=0, food_vector=True):
         forbidden_action_vector = self._get_forbidden_action(last_action)
         if board_size > 0:
-            board = self._get_board_section(obs_dict, board_size, food_vector)
+            board = self._get_board_sections(obs_dict, board_size, food_vector)
         else:
             board = np.array([])
 
@@ -156,30 +156,39 @@ class FeaturesCreator:
 
         return np.array([p1_food_row_feat, p1_food_col_feat, p2_food_row_feat, p2_food_col_feat])
 
-    # def _get_board_sections(self, obs_dict, size, food_vector):
-    #     board = self._get_board(obs_dict, food_vector)
-    #     if size == 1:
-    #         top = board[2:3, 4:7].reshape(-1)
-    #         right = np.rot90(board[2:5, 6:7], 3).reshape(-1)
-    #         bottom = np.rot90(board[4:5, 4:7], 2).reshape(-1)
-    #         left = np.rot90(board[2:5, 4:5], 1).reshape(-1)
-    #
-    #     return top, right, bottom, left
-    def _get_board_section(self, obs_dict, size, food_vector):
+    def _get_board_sections(self, obs_dict, size, food_vector):
         board = self._get_board(obs_dict, food_vector)
         if size == 1:
-            features = board[2:5, 4:7].reshape(-1)
-        elif size == 2:
-            features = board[1:6, 3:8].reshape(-1)
-        elif size == 3:
-            features = board[:, 2:9].reshape(-1)
-        elif size == 4:
-            features = board.reshape(-1)
-
-        middle_index = int((len(features)-1)/2)
-        features = np.delete(features, [middle_index])
-
-        return features
+            top = board[2:3, 4:7].reshape(-1)
+            right = board[2:5, 6:7].reshape(-1)
+            bottom = board[4:5, 6:3:-1].reshape(-1)
+            left = board[4:1:-1, 4:5].reshape(-1)
+        if size == 2:
+            top = board[2:3, 4:7].reshape(-1)
+            right = board[2:5, 6:7].reshape(-1)
+            bottom = board[4:5, 6:3:-1].reshape(-1)
+            left = board[4:1:-1, 4:5].reshape(-1)
+        if size == 3:
+            top = board[2:3, 4:7].reshape(-1)
+            right = board[2:5, 6:7].reshape(-1)
+            bottom = board[4:5, 6:3:-1].reshape(-1)
+            left = board[4:1:-1, 4:5].reshape(-1)
+        return top, right, bottom, left
+    # def _get_board_section(self, obs_dict, size, food_vector):
+    #     board = self._get_board(obs_dict, food_vector)
+    #     if size == 1:
+    #         features = board[2:5, 4:7].reshape(-1)
+    #     elif size == 2:
+    #         features = board[1:6, 3:8].reshape(-1)
+    #     elif size == 3:
+    #         features = board[:, 2:9].reshape(-1)
+    #     elif size == 4:
+    #         features = board.reshape(-1)
+    #
+    #     middle_index = int((len(features)-1)/2)
+    #     features = np.delete(features, [middle_index])
+    #
+    #     return features
 
     def _get_board(self, obs_dict, food_vector):
         board = np.zeros(7*11).reshape(7, 11)

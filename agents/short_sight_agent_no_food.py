@@ -23,31 +23,36 @@ class ShortSightAgentNoFood:
 
     def getStateSpace(self, obs_dict, last_action):
         self.last_action = last_action
-        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 2, True)
+        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 1, True)
         return board, forbidden_action, food_pos
 
     def _build_model(self, lr, entropy_reg):
 
         forbidden_action = Input(shape=(4,))
         food_pos = Input(shape=(4,))
-        embedding = Embedding(4, 1, input_length=24)
-        m = Sequential()
-        m.add(embedding)
-        m.add(Flatten())
+        embedding = Embedding(4, 1, input_length=3)
+        dense_logit = Dense(1, activation='linear')
 
-        #m.add(Dense(10, activation='elu'))
+        top = Input(shape=(3,))
+        right = Input(shape=(3,))
+        bottom = Input(shape=(3,))
+        left = Input(shape=(3,))
 
-        food_m = Sequential()
-        food_m.add(food_pos)
-        #food_m.add(Dense(4, activation='elu'))
+        top_embeddings = Flatten()(embedding(top))
+        right_embeddings = Flatten()(embedding(right))
+        bottom_embeddings = Flatten()(embedding(bottom))
+        left_embeddings = Flatten()(embedding(left))
 
-        concat = concatenate(m.outputs + food_m.outputs)
-        #d = Dense(10, activation='elu')(concat)
-        logits = Dense(4, activation='linear')(concat)
+        top_logit = dense_logit(top_embeddings)
+        right_logit = dense_logit(right_embeddings)
+        bottom_logit = dense_logit(bottom_embeddings)
+        left_logit = dense_logit(left_embeddings)
+
+        logits = concatenate([left_logit, right_logit, top_logit, bottom_logit])
 
         # m.add(Dense(4, activation='linear'))
 
-        inputs = [forbidden_action, m.input, food_m.inputs]
+        inputs = [forbidden_action, top, right, bottom, left]
 
         # c = concatenate(outputs)
         # pred = Dense(4, activation='linear')(c)
@@ -86,7 +91,7 @@ class ShortSightAgentNoFood:
                   experimental_run_tf_function=False)
         return m
 
-    def fit(self, X, y, val_X, val_y, batch_size=32, epoch=2):
+    def fit(self, X, y, val_X, val_y, batch_size=32, epoch=10):
         callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=2)
 
         self.model.fit(X,
@@ -108,13 +113,15 @@ class ShortSightAgentNoFood:
         self.model.set_weights(weights)
 
     def __call__(self, obs_dict, config_dict):
-        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 2, True)
+        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 1, True)
 
         self.stateSpace = board, forbidden_action, food_pos
 
         pred = self.model.predict([forbidden_action.reshape(-1, 4),
-                                   board.reshape(-1, 24),
-                                   food_pos.reshape(-1, 4),
+                                   board[0].reshape(-1, 3),
+                                   board[1].reshape(-1, 3),
+                                   board[2].reshape(-1, 3),
+                                   board[3].reshape(-1, 3),
                                    np.array([-1]).reshape(-1)])[0].astype('float64')
         if self.greedy:
             action = pred_to_action_greedy(pred)
