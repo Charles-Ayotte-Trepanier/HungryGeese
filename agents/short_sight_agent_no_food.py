@@ -23,20 +23,20 @@ class ShortSightAgentNoFood:
 
     def getStateSpace(self, obs_dict, last_action):
         self.last_action = last_action
-        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 1, True)
+        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 2, True)
         return board, forbidden_action, food_pos
 
     def _build_model(self, lr, entropy_reg):
 
         forbidden_action = Input(shape=(4,))
         food_pos = Input(shape=(4,))
-        embedding = Embedding(4, 1, input_length=3)
+        embedding = Embedding(4, 1, input_length=10)
         dense_logit = Dense(1, activation='linear')
 
-        top = Input(shape=(3,))
-        right = Input(shape=(3,))
-        bottom = Input(shape=(3,))
-        left = Input(shape=(3,))
+        top = Input(shape=(10,))
+        right = Input(shape=(10,))
+        bottom = Input(shape=(10,))
+        left = Input(shape=(10,))
 
         top_embeddings = Flatten()(embedding(top))
         right_embeddings = Flatten()(embedding(right))
@@ -113,15 +113,15 @@ class ShortSightAgentNoFood:
         self.model.set_weights(weights)
 
     def __call__(self, obs_dict, config_dict):
-        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 1, True)
+        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 2, True)
 
         self.stateSpace = board, forbidden_action, food_pos
 
         pred = self.model.predict([forbidden_action.reshape(-1, 4),
-                                   board[0].reshape(-1, 3),
-                                   board[1].reshape(-1, 3),
-                                   board[2].reshape(-1, 3),
-                                   board[3].reshape(-1, 3),
+                                   board[0].reshape(-1, 10),
+                                   board[1].reshape(-1, 10),
+                                   board[2].reshape(-1, 10),
+                                   board[3].reshape(-1, 10),
                                    np.array([-1]).reshape(-1)])[0].astype('float64')
         if self.greedy:
             action = pred_to_action_greedy(pred)

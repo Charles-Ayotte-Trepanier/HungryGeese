@@ -60,10 +60,10 @@ def transform_sample(samples):
 
     food = np.concatenate([sample['cur_state'][2].reshape(1, 4) for sample in samples], axis=0)
     forbidden = np.concatenate([sample['cur_state'][1].reshape(1, 4) for sample in samples], axis=0)
-    top = np.concatenate([sample['cur_state'][0][0].reshape(1, 3) for sample in samples], axis=0)
-    right = np.concatenate([sample['cur_state'][0][1].reshape(1, 3) for sample in samples], axis=0)
-    bottom = np.concatenate([sample['cur_state'][0][2].reshape(1, 3) for sample in samples], axis=0)
-    left = np.concatenate([sample['cur_state'][0][3].reshape(1, 3) for sample in samples], axis=0)
+    top = np.concatenate([sample['cur_state'][0][0].reshape(1, 10) for sample in samples], axis=0)
+    right = np.concatenate([sample['cur_state'][0][1].reshape(1, 10) for sample in samples], axis=0)
+    bottom = np.concatenate([sample['cur_state'][0][2].reshape(1, 10) for sample in samples], axis=0)
+    left = np.concatenate([sample['cur_state'][0][3].reshape(1, 10) for sample in samples], axis=0)
 
     step_reward = [sample['step_reward'] for sample in samples]
     food_reward = [sample['food_reward'] for sample in samples]
