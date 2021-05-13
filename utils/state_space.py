@@ -114,16 +114,32 @@ class FeaturesCreator:
         player_head = player_goose[0]
         food_positions = observation.food
 
-        food1_row, food1_column = self.get_position(player_head, food_positions[0])
-        food2_row, food2_column = self.get_position(player_head, food_positions[1])
+        if len(food_positions) == 2:
+            food1_row, food1_column = self.get_position(player_head, food_positions[0])
+            food2_row, food2_column = self.get_position(player_head, food_positions[1])
+        elif len(food_positions) == 1:
+            food1_row, food1_column = self.get_position(player_head, food_positions[0])
+            food2_row, food2_column = self.get_position(player_head, player_head)
+        elif len(food_positions) == 0:
+            food1_row, food1_column = self.get_position(player_head, player_head)
+            food2_row, food2_column = self.get_position(player_head, player_head)
 
-        food1_row_feat = float(food1_row - 3) / 5 if food1_row >= 3 else float(food1_row - 3) / 5
-        food2_row_feat = float(food2_row - 3) / 5 if food2_row >= 3 else float(food2_row - 3) / 5
-
-        food1_col_feat = float(food1_column - 5) / 5 if food1_column >= 5 else float(
-                food1_column - 5) / 5
-        food2_col_feat = float(food2_column - 5) / 5 if food2_column >= 5 else float(
-                food2_column - 5) / 5
+        if food1_row != 3:
+            food1_row_feat = 1.0/float(food1_row - 3)
+        else:
+            food1_row_feat = 0
+        if food2_row != 3:
+            food2_row_feat = 1.0/float(food2_row - 3)
+        else:
+            food2_row_feat = 0
+        if food1_column != 5:
+            food1_col_feat = 1.0/float(food1_column - 5)
+        else:
+            food1_col_feat = 0
+        if food2_column != 5:
+            food2_col_feat = 1.0 / float(food2_column - 5)
+        else:
+            food2_col_feat = 0
 
         # Prioritize food that is closer
         if (abs(food1_row_feat) + abs(food1_col_feat)) <= (
@@ -140,6 +156,15 @@ class FeaturesCreator:
 
         return np.array([p1_food_row_feat, p1_food_col_feat, p2_food_row_feat, p2_food_col_feat])
 
+    # def _get_board_sections(self, obs_dict, size, food_vector):
+    #     board = self._get_board(obs_dict, food_vector)
+    #     if size == 1:
+    #         top = board[2:3, 4:7].reshape(-1)
+    #         right = np.rot90(board[2:5, 6:7], 3).reshape(-1)
+    #         bottom = np.rot90(board[4:5, 4:7], 2).reshape(-1)
+    #         left = np.rot90(board[2:5, 4:5], 1).reshape(-1)
+    #
+    #     return top, right, bottom, left
     def _get_board_section(self, obs_dict, size, food_vector):
         board = self._get_board(obs_dict, food_vector)
         if size == 1:

@@ -32,7 +32,7 @@ def softmax(x):
 def pred_to_action(pred, logit=True):
     if logit:
         pred = softmax(pred)
-    pos = np.argmax(np.random.multinomial(1, pred[0]))
+    pos = np.argmax(np.random.multinomial(1, pred))
     return actions_list[pos]
 
 
