@@ -15,27 +15,9 @@ env = make("hungry_geese", debug=False)
 config = env.configuration
 
 validation_ratio = 0
-
+batch_size = int(1E9)
+epoch = 10
 initial_learning_rate = 0.1
-def food_G(rewards):
-    rewards_back = rewards[::-1]
-    v_prime = 0
-    g = []
-    for reward in rewards_back:
-        v = reward + 0.75*v_prime
-        v_prime = v
-        g.append(v)
-    return g[::-1]
-
-def step_G(rewards):
-    rewards_back = rewards[::-1]
-    v_prime = 0
-    g = []
-    for reward in rewards_back:
-        v = reward + 0.2*v_prime
-        v_prime = v
-        g.append(v)
-    return g[::-1]
 
 def compute_G(rewards, discount):
     rewards_back = rewards[::-1]
@@ -47,9 +29,6 @@ def compute_G(rewards, discount):
         g.append(v)
     return g[::-1]
 
-def G(food_rewards, step_rewards):
-    return (np.array(food_G(food_rewards)) + step_G(np.array(step_rewards))).reshape(-1, 1)
-
 def transform_sample(samples):
     nb_samples = len(samples)
     if validation_ratio > 0:
@@ -58,17 +37,17 @@ def transform_sample(samples):
         train = np.random.choice(nb_samples, nb_samples, replace=False)
         test = np.array([])
 
-    food = np.concatenate([sample['cur_state'][2].reshape(1, 4) for sample in samples], axis=0)
     forbidden = np.concatenate([sample['cur_state'][1].reshape(1, 4) for sample in samples], axis=0)
-    top = np.concatenate([sample['cur_state'][0][0].reshape(1, 10) for sample in samples], axis=0)
-    right = np.concatenate([sample['cur_state'][0][1].reshape(1, 10) for sample in samples], axis=0)
-    bottom = np.concatenate([sample['cur_state'][0][2].reshape(1, 10) for sample in samples], axis=0)
-    left = np.concatenate([sample['cur_state'][0][3].reshape(1, 10) for sample in samples], axis=0)
+    top = np.concatenate([sample['cur_state'][0][0].reshape(1, 21) for sample in samples], axis=0)
+    right = np.concatenate([sample['cur_state'][0][1].reshape(1, 21) for sample in samples], axis=0)
+    bottom = np.concatenate([sample['cur_state'][0][2].reshape(1, 21) for sample in samples],
+                            axis=0)
+    left = np.concatenate([sample['cur_state'][0][3].reshape(1, 21) for sample in samples], axis=0)
 
     step_reward = [sample['step_reward'] for sample in samples]
     food_reward = [sample['food_reward'] for sample in samples]
-    step_G = compute_G(step_reward, 0)
-    food_G = 0#compute_G(food_reward, 0.75)
+    step_G = compute_G(step_reward, 0.8)
+    food_G = compute_G(food_reward, 0.9)
     g = np.array(step_G).reshape(-1, 1) + np.array(food_G).reshape(-1, 1)
     g = (g-np.mean(g)) / (np.std(g) + 1E-5)
     y = np.concatenate([sample['action'].reshape(1, 4) for sample in samples], axis=0)
@@ -91,7 +70,7 @@ def run_game(nb_opponents, my_agent):
 
     done = False
     my_agent.last_action = state_dict.action
-    prev_food_eaten = 1
+
     prev_len = 1
     for step in range(1, steps_per_ep):
         actions = []
@@ -128,13 +107,13 @@ def run_game(nb_opponents, my_agent):
                 no_crash_reward = -3
         else:
             no_crash_reward = 0
-        prev_len = my_goose_length
-        cur_food_eaten = state_dict.reward % 100
-        if cur_food_eaten > prev_food_eaten:
-            food_reward = 1
+
+        if (my_goose_length > prev_len) or \
+                ((my_goose_length == prev_len) and (observation.step % 40) == 0):
+            food_reward = 0
         else:
             food_reward = 0
-        prev_food_eaten = cur_food_eaten
+        prev_len = my_goose_length
 
         steps.append({'cur_state': cur_state,
                       'action': action_to_target(action),
@@ -178,14 +157,19 @@ if __name__ == "__main__":
             best_score = avg_nb_steps
             print('Saving Weights')
             agent.save_weights('ShortSightAgentNoFood')
-            agent.fit(X, y, X_val, y_val, batch_size=9999999)
+            X_best = X
+            y_best = y
+            X_val_best = X_val
+            y_val_best = y_val
+            agent.fit(X, y, X_val, y_val, batch_size=batch_size, epoch=epoch)
         elif avg_nb_steps < best_score*0.95:
             print('Reducing learning rate')
-            agent = ShortSightAgentNoFood(learning_rate=initial_learning_rate*(0.01**i))
+            agent = ShortSightAgentNoFood(learning_rate=initial_learning_rate*(0.1**i))
             agent.load_weights('ShortSightAgentNoFood')
+            agent.fit(X_best, y_best, X_val_best, y_val_best, batch_size=batch_size, epoch=epoch)
             i += 1
         else:
-            agent.fit(X, y, X_val, y_val, batch_size=9999999)
+            agent.fit(X, y, X_val, y_val, batch_size=batch_size, epoch=epoch)
 
         if i > 5:
             break

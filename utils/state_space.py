@@ -7,7 +7,7 @@ def get_encoding(part, food_vector):
         'head': 1,
         'body': 2,
         'tail': 3,
-        'food': 0
+        'food': 4
     }
 
     if food_vector:
@@ -169,10 +169,10 @@ class FeaturesCreator:
             bottom = board[5:3:-1, 7:2:-1].reshape(-1)
             left = board[5:0:-1, 3:5].T.reshape(-1)
         if size == 3:
-            top = board[0:4, 2:9].reshape(-1)
+            top = board[0:3, 2:9].reshape(-1)
             right = board[0:7, 8:5:-1].T.reshape(-1)
             bottom = board[6:3:-1, 8:1:-1].reshape(-1)
-            left = board[5:0:-1, 3:5].T.reshape(-1)
+            left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 2:5].T.reshape(-1)
         return top, right, bottom, left
     # def _get_board_section(self, obs_dict, size, food_vector):
     #     board = self._get_board(obs_dict, food_vector)
