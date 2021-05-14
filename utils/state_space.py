@@ -163,17 +163,30 @@ class FeaturesCreator:
             right = board[2:5, 6:7].reshape(-1)
             bottom = board[4:5, 6:3:-1].reshape(-1)
             left = board[4:1:-1, 4:5].reshape(-1)
+            far_right = None
+            far_left = None
         if size == 2:
             top = board[1:3, 3:8].reshape(-1)
             right = board[1:6, 7:5:-1].T.reshape(-1)
             bottom = board[5:3:-1, 7:2:-1].reshape(-1)
             left = board[5:0:-1, 3:5].T.reshape(-1)
+            far_right = None
+            far_left = None
         if size == 3:
             top = board[0:3, 2:9].reshape(-1)
             right = board[0:7, 8:5:-1].T.reshape(-1)
             bottom = board[6:3:-1, 8:1:-1].reshape(-1)
             left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 2:5].T.reshape(-1)
-        return top, right, bottom, left
+            far_right = None
+            far_left = None
+        if size == 4:
+            top = board[0:3, 2:9].reshape(-1)
+            right = board[0:7, 8:5:-1].T.reshape(-1)
+            bottom = board[6:3:-1, 8:1:-1].reshape(-1)
+            left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 2:5].T.reshape(-1)
+            far_right = board[0:7, 10:8:-1].T.reshape(-1)
+            far_left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 0:2].T.reshape(-1)
+        return top, right, bottom, left, far_right, far_left
     # def _get_board_section(self, obs_dict, size, food_vector):
     #     board = self._get_board(obs_dict, food_vector)
     #     if size == 1:

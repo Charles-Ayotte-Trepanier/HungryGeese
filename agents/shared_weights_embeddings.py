@@ -23,7 +23,7 @@ class ShortSightAgentNoFood:
 
     def getStateSpace(self, obs_dict, last_action):
         self.last_action = last_action
-        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 3, False)
+        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 4, False)
         return board, forbidden_action, food_pos
 
     def _build_model(self, lr, entropy_reg):
@@ -31,36 +31,51 @@ class ShortSightAgentNoFood:
         forbidden_action = Input(shape=(4,))
 
         embedding = Embedding(5, 1, input_length=21)
-        dense1 = Dense(10, activation='elu')
-        dense2 = Dense(5, activation='elu')
-        dense_logit = Dense(1, activation='linear')
 
         top = Input(shape=(21,))
         right = Input(shape=(21,))
         bottom = Input(shape=(21,))
         left = Input(shape=(21,))
 
-        def apply_layer(input):
-            out = embedding(input)
+        far_right = Input(shape=(14,))
+        far_left = Input(shape=(14,))
+
+        common_linear = Dense(1, activation='linear')
+
+        far_sides_linear = Dense(1, activation='linear')
+        near_far_weighted = Dense(1, activation='linear')
+        paddings = tf.constant([[0, 0, ], [0, 7]])
+
+        def far_sides(input):
+            out = tf.pad(input, paddings, "CONSTANT")
+            out = embedding(out)
             out = Flatten()(out)
-            # out = dense1(out)
-            # out = dense2(out)
-            out = dense_logit(out)
+            out, _ = tf.split(out, [14, 7], 1)
+            out = far_sides_linear(out)
             return out
 
-        top_logit = apply_layer(top)
-        right_logit = apply_layer(right)
-        bottom_logit = apply_layer(bottom)
-        left_logit = apply_layer(left)
+        def common_blocks(input):
+            out = embedding(input)
+            out = Flatten()(out)
+            out = common_linear(out)
+            return out
 
-        logits = concatenate([left_logit, right_logit, top_logit, bottom_logit])
+        def apply_side_layers(near, far):
+            out_near = common_blocks(near)
+            out_far = far_sides(far)
+            concat = concatenate([out_near, out_far])
+            out = near_far_weighted(concat)
+            return out
 
-        # m.add(Dense(4, activation='linear'))
+        top_output = common_blocks(top)
+        right_output = apply_side_layers(right, far_right)
+        bottom_output = common_blocks(bottom)
+        left_output = apply_side_layers(left, far_left)
 
-        inputs = [forbidden_action, top, right, bottom, left]
+        logits = concatenate([left_output, right_output, top_output, bottom_output])
 
-        # c = concatenate(outputs)
-        # pred = Dense(4, activation='linear')(c)
+        inputs = [forbidden_action, top, right, bottom, left, far_right, far_left]
+
         no_action = tf.math.multiply(forbidden_action, -10000)
         pred = tf.math.add(logits, no_action)
 
@@ -118,7 +133,7 @@ class ShortSightAgentNoFood:
         self.model.set_weights(weights)
 
     def __call__(self, obs_dict, config_dict):
-        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 3, False)
+        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 4, False)
 
         self.stateSpace = board, forbidden_action, food_pos
 
@@ -127,6 +142,8 @@ class ShortSightAgentNoFood:
                                    board[1].reshape(-1, 21),
                                    board[2].reshape(-1, 21),
                                    board[3].reshape(-1, 21),
+                                   board[4].reshape(-1, 14),
+                                   board[5].reshape(-1, 14),
                                    np.array([-1]).reshape(-1)])[0].astype('float64')
         if self.greedy:
             action = pred_to_action_greedy(pred)
