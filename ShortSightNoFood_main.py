@@ -110,7 +110,7 @@ def run_game(nb_opponents, my_agent):
 
         if (my_goose_length > prev_len) or \
                 ((my_goose_length == prev_len) and (observation.step % 40) == 0):
-            food_reward = 0
+            food_reward = 2
         else:
             food_reward = 0
         prev_len = my_goose_length
@@ -124,7 +124,7 @@ def run_game(nb_opponents, my_agent):
         if done:
             break
 
-    return steps
+    return steps, 1 if my_goose_length > 0 else 0
 
 
 if __name__ == "__main__":
@@ -136,25 +136,34 @@ if __name__ == "__main__":
     # agent.model.set_weights([embeddings, dense, bias])
     #agent.load_weights('ShortSightAgentNoFood')
     best_score = 0
+    best_wins = 0
     i = 1
+    come_back = 0
     for iteration in range(1, 101):
         samples = []
         avg_duration = []
+        wins = []
         nb_games = 100 * (1+int(float(iteration)/10))
         nb_games = min(nb_games, 1000)
         print(f'# games to play: {nb_games}')
         for _ in range(nb_games):
-            cur_game = run_game(nb_opponents, agent)
+            cur_game, win = run_game(nb_opponents, agent)
             samples += cur_game
+            wins.append(win)
             avg_duration.append(len(cur_game))
         avg_nb_steps = np.mean(avg_duration)
         max_nb_steps = np.max(avg_duration)
+        avg_win = np.mean(wins)
         print(f'Average game duration (steps): {avg_nb_steps}')
         print(f'Max game duration (steps): {max_nb_steps}')
+        print(f'Win rate: {avg_win}')
         X, y, X_val, y_val = transform_sample(samples)
 
-        if avg_nb_steps > best_score:
-            best_score = avg_nb_steps
+        if (avg_nb_steps > best_score) or (avg_win > best_wins):
+            if avg_nb_steps > best_score:
+                best_score = avg_nb_steps
+            if avg_win > best_wins:
+                best_wins = avg_win
             print('Saving Weights')
             agent.save_weights('ShortSightAgentNoFood')
             X_best = X
@@ -162,12 +171,16 @@ if __name__ == "__main__":
             X_val_best = X_val
             y_val_best = y_val
             agent.fit(X, y, X_val, y_val, batch_size=batch_size, epoch=epoch)
-        elif avg_nb_steps < best_score*0.95:
+        elif come_back > 0:
+            agent.fit(X, y, X_val, y_val, batch_size=batch_size, epoch=epoch)
+            come_back -= 1
+        elif (avg_nb_steps < best_score*0.95) and (avg_win < best_wins*0.95):
             print('Reducing learning rate')
             agent = ShortSightAgentNoFood(learning_rate=initial_learning_rate*(0.1**i))
             agent.load_weights('ShortSightAgentNoFood')
             agent.fit(X_best, y_best, X_val_best, y_val_best, batch_size=batch_size, epoch=epoch)
             i += 1
+            come_back = 5
         else:
             agent.fit(X, y, X_val, y_val, batch_size=batch_size, epoch=epoch)
 
