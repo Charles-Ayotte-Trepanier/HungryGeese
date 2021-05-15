@@ -1,7 +1,7 @@
 from tensorflow.keras.layers import Dense, Input, Embedding, Flatten, concatenate
 from tensorflow.keras import Model, Sequential
 import tensorflow as tf
-
+from tensorflow.keras.constraints import non_neg, UnitNorm
 from utils.state_space import *
 from utils.helpers import pred_to_action, pred_to_action_greedy, target_to_action
 from tensorflow.python.framework.ops import disable_eager_execution
@@ -30,7 +30,8 @@ class ShortSightAgentNoFood:
 
         forbidden_action = Input(shape=(4,))
 
-        embedding = Embedding(5, 1, input_length=21)
+        norm_layer = UnitNorm(axis=1)
+        embedding = Embedding(5, 1, input_length=21, trainable=True)
 
         top = Input(shape=(21,))
         right = Input(shape=(21,))
@@ -40,15 +41,16 @@ class ShortSightAgentNoFood:
         far_right = Input(shape=(14,))
         far_left = Input(shape=(14,))
 
-        common_linear = Dense(1, activation='linear')
+        common_linear = Dense(1, activation='linear', use_bias=False, trainable=True)
 
-        far_sides_linear = Dense(1, activation='linear')
-        near_far_weighted = Dense(1, activation='linear')
+        far_sides_linear = Dense(1, activation='linear', use_bias=False, trainable=True)
+        near_far_weighted = Dense(1, activation='linear', use_bias=False, trainable=True)
         paddings = tf.constant([[0, 0, ], [0, 7]])
 
         def far_sides(input):
             out = tf.pad(input, paddings, "CONSTANT")
             out = embedding(out)
+            out = norm_layer(out)
             out = Flatten()(out)
             out, _ = tf.split(out, [14, 7], 1)
             out = far_sides_linear(out)
@@ -56,6 +58,7 @@ class ShortSightAgentNoFood:
 
         def common_blocks(input):
             out = embedding(input)
+            out = norm_layer(out)
             out = Flatten()(out)
             out = common_linear(out)
             return out

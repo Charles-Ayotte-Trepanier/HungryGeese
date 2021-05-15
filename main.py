@@ -15,8 +15,9 @@ env = make("hungry_geese", debug=False)
 config = env.configuration
 
 validation_ratio = 0
-batch_size = int(1E9)
-epoch = 10
+batch_size = 9999999
+epoch = 5
+nb_slow_downs = 5
 initial_learning_rate = 0.1
 
 def compute_G(rewards, discount):
@@ -136,6 +137,15 @@ def run_game(nb_opponents, my_agent):
 if __name__ == "__main__":
 
     agent = ShortSightAgentNoFood(learning_rate=initial_learning_rate, entropy_reg=0)
+    # agent.load_weights('ShortSightAgentNoFood')
+    agent.load_weights("fixed_far_sight")
+    # weights = agent.model.get_weights()
+    # weights[0] = np.array([1, -2, -1, -1, 3]).reshape(-1, 1)
+    # weights[3] = np.array([1, 0]).reshape(-1, 1)
+    # agent.model.set_weights(weights)
+
+    # weights[0] = np.array([-1, 1, 1, 1, -2]).reshape(-1, 1)
+    # agent.model.set_weights(weights)
     # embeddings = np.array([1, -1]).reshape(2, 1)
     # dense = np.array([4, 10, 4]).reshape(3, 1)
     # bias = np.array([0]).reshape(1, )
@@ -171,7 +181,7 @@ if __name__ == "__main__":
             if avg_win > best_wins:
                 best_wins = avg_win
             print('Saving Weights')
-            agent.save_weights('ShortSightAgentNoFood')
+            agent.save_weights('train_script_weights')
             X_best = X
             y_best = y
             X_val_best = X_val
@@ -183,13 +193,14 @@ if __name__ == "__main__":
         elif (avg_nb_steps < best_score*0.95) and (avg_win < best_wins*0.95):
             print('Reducing learning rate')
             agent = ShortSightAgentNoFood(learning_rate=initial_learning_rate*(0.1**i))
-            agent.load_weights('ShortSightAgentNoFood')
+            epoch = max(int(float(epoch)/2), 1)
+            agent.load_weights('train_script_weights')
             agent.fit(X_best, y_best, X_val_best, y_val_best, batch_size=batch_size, epoch=epoch)
             i += 1
             come_back = 5
         else:
             agent.fit(X, y, X_val, y_val, batch_size=batch_size, epoch=epoch)
 
-        if i > 5:
+        if i > nb_slow_downs:
             break
 
