@@ -23,7 +23,7 @@ class CnnAgent:
 
     def getStateSpace(self, obs_dict, last_action):
         self.last_action = last_action
-        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 3, False)
+        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 5, False)
         return board, forbidden_action, food_pos
 
     def _build_model(self, lr, entropy_reg):
@@ -32,22 +32,22 @@ class CnnAgent:
         bodies = Input(shape=(4,))
 
         norm_layer = UnitNorm(axis=1)
-        embedding = Embedding(5, 1, input_length=21, trainable=False)
+        embedding = Embedding(5, 1, input_length=35, trainable=False)
 
-        top = Input(shape=(21,))
-        right = Input(shape=(21,))
-        bottom = Input(shape=(21,))
-        left = Input(shape=(21,))
+        top = Input(shape=(35,))
+        right = Input(shape=(35,))
+        bottom = Input(shape=(35,))
+        left = Input(shape=(35,))
 
-        cnn1 = Conv2D(1, 2, activation='elu', use_bias=True,)
-        cnn2 = Conv2D(1, 2, activation='elu', use_bias=True,)
+        cnn1 = Conv2D(2, 2, activation='elu', use_bias=False, trainable=True)
+        cnn2 = Conv2D(1, 2, activation='elu', use_bias=False, trainable=True)
         common_linear = Dense(1, activation='linear', use_bias=False, trainable=True)
 
         def common_blocks(input):
             out = embedding(input)
             out = norm_layer(out)
             out = Flatten()(out)
-            out = tf.reshape(out, [-1, 3, 7, 1])
+            out = tf.reshape(out, [-1, 5, 7, 1])
             out = cnn1(out)
             out = cnn2(out)
             out = Flatten()(out)
@@ -59,14 +59,14 @@ class CnnAgent:
         bottom_output = common_blocks(bottom)
         left_output = common_blocks(left)
 
-        pred = concatenate([left_output, right_output, top_output, bottom_output])
+        logits = concatenate([left_output, right_output, top_output, bottom_output])
 
         inputs = [forbidden_action, top, right, bottom, left, bodies]
 
-        # no_action = tf.math.multiply(forbidden_action, -10000)
-        # no_action2 = tf.math.multiply(bodies, -10000)
-        # pred = tf.math.add(logits, no_action)
-        # pred = tf.math.add(pred, no_action2)
+        no_action = tf.math.multiply(forbidden_action, -10000)
+        no_action2 = tf.math.multiply(bodies, -10000)
+        pred = tf.math.add(logits, no_action)
+        pred = tf.math.add(pred, no_action2)
 
         G = Input(shape=(1, ))
         G_input = [G]
@@ -123,15 +123,15 @@ class CnnAgent:
         self.model.set_weights(weights)
 
     def __call__(self, obs_dict, config_dict):
-        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 3, False)
+        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 5, False)
 
         self.stateSpace = board, forbidden_action, food_pos
 
         pred = self.model.predict([forbidden_action.reshape(-1, 4),
-                                   board[0].reshape(-1, 21),
-                                   board[1].reshape(-1, 21),
-                                   board[2].reshape(-1, 21),
-                                   board[3].reshape(-1, 21),
+                                   board[0].reshape(-1, 35),
+                                   board[1].reshape(-1, 35),
+                                   board[2].reshape(-1, 35),
+                                   board[3].reshape(-1, 35),
                                    board[4].reshape(-1, 4),
                                    np.array([-1]).reshape(-1)])[0].astype('float64')
         if self.greedy:

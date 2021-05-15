@@ -39,11 +39,11 @@ def transform_sample(samples):
         test = np.array([])
 
     forbidden = np.concatenate([sample['cur_state'][1].reshape(1, 4) for sample in samples], axis=0)
-    top = np.concatenate([sample['cur_state'][0][0].reshape(1, 21) for sample in samples], axis=0)
-    right = np.concatenate([sample['cur_state'][0][1].reshape(1, 21) for sample in samples], axis=0)
-    bottom = np.concatenate([sample['cur_state'][0][2].reshape(1, 21) for sample in samples],
+    top = np.concatenate([sample['cur_state'][0][0].reshape(1, 35) for sample in samples], axis=0)
+    right = np.concatenate([sample['cur_state'][0][1].reshape(1, 35) for sample in samples], axis=0)
+    bottom = np.concatenate([sample['cur_state'][0][2].reshape(1, 35) for sample in samples],
                             axis=0)
-    left = np.concatenate([sample['cur_state'][0][3].reshape(1, 21) for sample in samples], axis=0)
+    left = np.concatenate([sample['cur_state'][0][3].reshape(1, 35) for sample in samples], axis=0)
 
     bodies = np.concatenate([sample['cur_state'][0][4].reshape(1, 4) for sample in samples],
                               axis=0)
