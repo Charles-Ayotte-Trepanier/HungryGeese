@@ -159,33 +159,31 @@ class FeaturesCreator:
     def _get_board_sections(self, obs_dict, size, food_vector):
         board = self._get_board(obs_dict, food_vector)
         if size == 1:
-            top = board[2:3, 4:7].reshape(-1)
-            right = board[2:5, 6:7].reshape(-1)
-            bottom = board[4:5, 6:3:-1].reshape(-1)
-            left = board[4:1:-1, 4:5].reshape(-1)
-            far_right = None
-            far_left = None
+            top = board[2:3, 4:7]
+            right = board[2:5, 6:7]
+            bottom = board[4:5, 6:3:-1]
+            left = board[4:1:-1, 4:5]
         if size == 2:
-            top = board[1:3, 3:8].reshape(-1)
-            right = board[1:6, 7:5:-1].T.reshape(-1)
-            bottom = board[5:3:-1, 7:2:-1].reshape(-1)
-            left = board[5:0:-1, 3:5].T.reshape(-1)
-            far_right = None
-            far_left = None
+            top = board[1:3, 3:8]
+            right = board[1:6, 7:5:-1].T
+            bottom = board[5:3:-1, 7:2:-1]
+            left = board[5:0:-1, 3:5].T
         if size == 3:
-            top = board[0:3, 2:9].reshape(-1)
-            right = board[0:7, 8:5:-1].T.reshape(-1)
-            bottom = board[6:3:-1, 8:1:-1].reshape(-1)
-            left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 2:5].T.reshape(-1)
-            far_right = None
-            far_left = None
+            top = board[0:3, 2:9]
+            right = board[0:7, 8:5:-1].T
+            bottom = board[6:3:-1, 8:1:-1]
+            left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 2:5].T
         if size == 4:
-            top = board[0:3, 2:9].reshape(-1)
-            right = board[0:7, 8:5:-1].T.reshape(-1)
-            bottom = board[6:3:-1, 8:1:-1].reshape(-1)
-            left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 2:5].T.reshape(-1)
-            far_right = board[0:7, 10:8:-1].T.reshape(-1)
-            far_left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 0:2].T.reshape(-1)
+            top = np.vstack((board[6:7, 2:9], board[0:3, 2:9]))
+            right = board[0:7, 9:5:-1].T
+            bottom = np.vstack((board[0, 8:1:-1], board[6:3:-1, 8:1:-1]))
+            left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 1:5].T
+        if size == 5:
+            top = np.vstack((board[5:7, 2:9], board[0:3, 2:9]))
+            right = board[0:7, 10:5:-1].T
+            bottom = np.vstack((board[np.array([1, 0]), 8:1:-1], board[6:3:-1, 8:1:-1]))
+            left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 0:5].T
+
         bodies = np.zeros(4)
         if board[3, 4] == 2:
             bodies[0] = 1
@@ -195,7 +193,7 @@ class FeaturesCreator:
             bodies[2] = 1
         if board[4, 5] == 2:
             bodies[3] = 1
-        return top, right, bottom, left, far_right, far_left, bodies
+        return top, right, bottom, left, bodies
     # def _get_board_section(self, obs_dict, size, food_vector):
     #     board = self._get_board(obs_dict, food_vector)
     #     if size == 1:

@@ -2,7 +2,7 @@ from kaggle_environments import make
 from kaggle_environments.envs.hungry_geese.hungry_geese import Observation, Configuration, Action, \
                                                 row_col, adjacent_positions, translate, min_distance
 from sklearn.model_selection import train_test_split
-from agents.shared_weights_embeddings import ShortSightAgentNoFood
+from agents.cnn import CnnAgent
 from agents.greedy_agent import GreedyAgent
 from utils.helpers import action_to_target
 import numpy as np
@@ -44,12 +44,8 @@ def transform_sample(samples):
     bottom = np.concatenate([sample['cur_state'][0][2].reshape(1, 21) for sample in samples],
                             axis=0)
     left = np.concatenate([sample['cur_state'][0][3].reshape(1, 21) for sample in samples], axis=0)
-    far_right = np.concatenate([sample['cur_state'][0][4].reshape(1, 14) for sample in samples],
-                               axis=0)
-    far_left = np.concatenate([sample['cur_state'][0][5].reshape(1, 14) for sample in samples],
-                              axis=0)
 
-    bodies = np.concatenate([sample['cur_state'][0][6].reshape(1, 4) for sample in samples],
+    bodies = np.concatenate([sample['cur_state'][0][4].reshape(1, 4) for sample in samples],
                               axis=0)
 
     step_reward = [sample['step_reward'] for sample in samples]
@@ -60,14 +56,12 @@ def transform_sample(samples):
     g = (g-np.mean(g)) / (np.std(g) + 1E-5)
     y = np.concatenate([sample['action'].reshape(1, 4) for sample in samples], axis=0)
     return [forbidden[train], top[train], right[train], bottom[train], left[train],
-            far_right[train], far_left[train], bodies[train], g[train]], y[train],\
+             bodies[train], g[train]], y[train],\
            [forbidden[test] if len(test) > 0 else np.array([]),
             top[test] if len(test) > 0 else np.array([]),
             right[test] if len(test) > 0 else np.array([]),
             bottom[test] if len(test) > 0 else np.array([]),
             left[test] if len(test) > 0 else np.array([]),
-            far_right[test] if len(test) > 0 else np.array([]),
-            far_left[test] if len(test) > 0 else np.array([]),
             bodies[test] if len(test) > 0 else np.array([]),
             g[test] if len(test) > 0 else np.array([])],\
            y[test] if len(test) > 0 else np.array([])
@@ -140,9 +134,11 @@ def run_game(nb_opponents, my_agent):
 
 if __name__ == "__main__":
 
-    agent = ShortSightAgentNoFood(learning_rate=initial_learning_rate, entropy_reg=0)
+    agent = CnnAgent(learning_rate=initial_learning_rate, entropy_reg=0)
     # agent.load_weights('ShortSightAgentNoFood')
-    agent.load_weights("best_weights_may14")
+    weights = agent.model.get_weights()
+    weights[0] = np.array([-1, 1, 1, 1, -2]).reshape(-1, 1)
+    agent.model.set_weights(weights)
     # weights = agent.model.get_weights()
     # weights[0] = np.array([1, -2, -1, -1, 3]).reshape(-1, 1)
     # weights[3] = np.array([1, 0]).reshape(-1, 1)
@@ -164,7 +160,7 @@ if __name__ == "__main__":
         avg_duration = []
         wins = []
         nb_games = 100 * (1+int(float(iteration)/10))
-        nb_games = 5*min(nb_games, 1000)
+        nb_games = min(nb_games, 1000)
         print(f'# games to play: {nb_games}')
         for _ in range(nb_games):
             cur_game, win = run_game(nb_opponents, agent)
@@ -196,7 +192,7 @@ if __name__ == "__main__":
             come_back -= 1
         elif (avg_nb_steps < best_score*0.95) and (avg_win < best_wins*0.95):
             print('Reducing learning rate')
-            agent = ShortSightAgentNoFood(learning_rate=initial_learning_rate*(0.1**i))
+            agent = CnnAgent(learning_rate=initial_learning_rate*(0.1**i))
             epoch = max(int(float(epoch)/2), 1)
             agent.load_weights('train_script_weights')
             agent.fit(X_best, y_best, X_val_best, y_val_best, batch_size=batch_size, epoch=epoch)
