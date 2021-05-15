@@ -1,6 +1,46 @@
+import numpy as np
+from kaggle_environments.envs.hungry_geese.hungry_geese import Action
+
+actions_dict = {
+    Action.WEST.name: 0,
+    Action.EAST.name: 1,
+    Action.NORTH.name: 2,
+    Action.SOUTH.name: 3,
+}
+
+actions_dict_invert = {v: k for k, v in actions_dict.items()}
+actions_list = [actions_dict_invert[i] for i in range(4)]
+
+
+def action_to_target(action):
+    pos = actions_dict[action]
+    target = np.zeros(4)
+    target[pos] = 1
+    return target
+
+
+def target_to_action(target):
+    pos = np.argmax(target)
+    return actions_list[pos]
+
+
+def softmax(x):
+    z = x - np.max(x)
+    return np.exp(z) / np.sum(np.exp(z))
+
+
+def pred_to_action(pred, logit=True):
+    if logit:
+        pred = softmax(pred)
+    pos = np.argmax(np.random.multinomial(1, pred))
+    return actions_list[pos]
+
+
+def pred_to_action_greedy(pred):
+    pos = np.argmax(pred)
+    return actions_list[pos]
 from kaggle_environments.envs.hungry_geese.hungry_geese import row_col, Observation, Action
 import numpy as np
-from utils.helpers import actions_dict
 
 def get_encoding(part, food_vector):
     encodings = {
@@ -186,16 +226,7 @@ class FeaturesCreator:
             left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 2:5].T.reshape(-1)
             far_right = board[0:7, 10:8:-1].T.reshape(-1)
             far_left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 0:2].T.reshape(-1)
-        bodies = np.zeros(4)
-        if board[3, 4] == 2:
-            bodies[0] = 1
-        if board[3, 6] == 2:
-            bodies[1] = 1
-        if board[2, 5] == 2:
-            bodies[2] = 1
-        if board[4, 5] == 2:
-            bodies[3] = 1
-        return top, right, bottom, left, far_right, far_left, bodies
+        return top, right, bottom, left, far_right, far_left, board
     # def _get_board_section(self, obs_dict, size, food_vector):
     #     board = self._get_board(obs_dict, food_vector)
     #     if size == 1:
@@ -237,3 +268,146 @@ fs = FeaturesCreator()
 
 def get_state_space(obs_dict, last_action, board_size=0, food_vector=True):
     return fs.get_features(obs_dict, last_action, board_size, food_vector)
+
+
+from tensorflow.keras.layers import Dense, Input, Embedding, Flatten, concatenate
+from tensorflow.keras import Model, Sequential
+import tensorflow as tf
+from tensorflow.keras.constraints import non_neg, UnitNorm
+
+import pickle
+
+class ShortSightAgentNoFood:
+    """
+    Baseline agent to test reinforce algorithm - state space is only the last action taken,
+    with the expectation that it will learn not to take opposite actions
+    """
+
+    def __init__(self, greedy=True, learning_rate=0.01, entropy_reg=0):
+        self.last_action = ['NORTH', 'EAST', 'WEST', 'SOUTH'][np.random.randint(4)]
+        self.stateSpace = None
+        self.model = self._build_model(learning_rate, entropy_reg)
+        self.greedy = greedy
+
+        serialized = b'(lp0\ncnumpy.core.multiarray\n_reconstruct\np1\n(cnumpy\nndarray\np2\n(I0\ntp3\nc_codecs\nencode\np4\n(Vb\np5\nVlatin1\np6\ntp7\nRp8\ntp9\nRp10\n(I1\n(I5\nI1\ntp11\ncnumpy\ndtype\np12\n(Vf4\np13\nI00\nI01\ntp14\nRp15\n(I3\nV<\np16\nNNNI-1\nI-1\nI0\ntp17\nbI00\ng4\n(V\xef\xb3\xb5>\x0e\xa0v\xc0\xde\xee\xb4\xbf\xb6~\x07\xc0-<O@\np18\ng6\ntp19\nRp20\ntp21\nbag1\n(g2\n(I0\ntp22\ng8\ntp23\nRp24\n(I1\n(I21\nI1\ntp25\ng15\nI00\ng4\n(V36\x98\xbe\x08\xa1u\xbeF\xa0\x12@\xde\xc7\xa7>\xd1\xd0\x15@\x18s\xba>\x87X\xaf\xbf\x02\xbc\xaa\xbf\x01\x17\xd1?\xba\xb0\xf4?\xba\xee\xcd@z\x91g?\xfe\xd8\x17@\x02\xea\x95\xbf\xb4Y\x0e?\xf62\x90?\xea\xa9\xa3@\xd1\xdd\x03AnS\xb2@\x1e\xc6\x8d><St\xbf\np26\ng6\ntp27\nRp28\ntp29\nbag1\n(g2\n(I0\ntp30\ng8\ntp31\nRp32\n(I1\n(I14\nI1\ntp33\ng15\nI00\ng4\n(Vq\xc2\x02\xbf\x81\x8b\xad>}\x82z?\xddY\x1f\xbeLh\xc2\xbeA_%\xbf{tX>\x7f\x05\x0c\xbf\xd7\xc8\x17\xbf\xa7\xa3\xa8>(\\u000d\xfc>\xe3\x80d\xbf*\x92B?\x1e`\xb0>\np34\ng6\ntp35\nRp36\ntp37\nbag1\n(g2\n(I0\ntp38\ng8\ntp39\nRp40\n(I1\n(I2\nI1\ntp41\ng15\nI00\ng4\n(V<\xd4\x90?\x1d\xb2D\xbe\np42\ng6\ntp43\nRp44\ntp45\nba.'
+        weights = pickle.loads(serialized)
+        self.model.set_weights(weights)
+
+    def getStateSpace(self, obs_dict, last_action):
+        self.last_action = last_action
+        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 4, False)
+        return board, forbidden_action, food_pos
+
+    def _build_model(self, lr, entropy_reg):
+        tf.compat.v1.reset_default_graph()
+
+        forbidden_action = Input(shape=(4,))
+
+        norm_layer = UnitNorm(axis=1)
+        embedding = Embedding(5, 1, input_length=21, trainable=True)
+
+        top = Input(shape=(21,))
+        right = Input(shape=(21,))
+        bottom = Input(shape=(21,))
+        left = Input(shape=(21,))
+
+        far_right = Input(shape=(14,))
+        far_left = Input(shape=(14,))
+
+        common_linear = Dense(1, activation='linear', use_bias=False, trainable=True)
+
+        far_sides_linear = Dense(1, activation='linear', use_bias=False, trainable=True)
+        near_far_weighted = Dense(1, activation='linear', use_bias=False, trainable=True)
+        paddings = tf.constant([[0, 0, ], [0, 7]])
+
+        def far_sides(input):
+            out = tf.pad(input, paddings, "CONSTANT")
+            out = embedding(out)
+            out = norm_layer(out)
+            out = Flatten()(out)
+            out, _ = tf.split(out, [14, 7], 1)
+            out = far_sides_linear(out)
+            return out
+
+        def common_blocks(input):
+            out = embedding(input)
+            out = norm_layer(out)
+            out = Flatten()(out)
+            out = common_linear(out)
+            return out
+
+        def apply_side_layers(near, far):
+            out_near = common_blocks(near)
+            out_far = far_sides(far)
+            concat = concatenate([out_near, out_far])
+            out = near_far_weighted(concat)
+            return out
+
+        top_output = common_blocks(top)
+        right_output = apply_side_layers(right, far_right)
+        bottom_output = common_blocks(bottom)
+        left_output = apply_side_layers(left, far_left)
+
+        logits = concatenate([left_output, right_output, top_output, bottom_output])
+
+        inputs = [forbidden_action, top, right, bottom, left, far_right, far_left]
+
+        no_action = tf.math.multiply(forbidden_action, -10000)
+        pred = tf.math.add(logits, no_action)
+
+
+        m = Model([inputs] , pred)
+
+        return m
+
+    def __call__(self, obs_dict, config_dict):
+        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 4, False)
+
+        self.stateSpace = board, forbidden_action, food_pos
+
+        pred = self.model.predict([forbidden_action.reshape(-1, 4),
+                                   board[0].reshape(-1, 21),
+                                   board[1].reshape(-1, 21),
+                                   board[2].reshape(-1, 21),
+                                   board[3].reshape(-1, 21),
+                                   board[4].reshape(-1, 14),
+                                   board[5].reshape(-1, 14)])[0].astype('float64')
+        if self.greedy:
+            if board[6][3, 4] == 1:
+                pred[0] = -1000
+            if board[6][3, 4] == 2:
+                pred[0] = -10000
+            if board[6][3, 4] == 3:
+                pred[0] = -500
+            if board[6][3, 6] == 1:
+                pred[1] = -1000
+            if board[6][3, 6] == 2:
+                pred[1] = -10000
+            if board[6][3, 6] == 3:
+                pred[1] = -500
+            if board[6][2, 5] == 1:
+                pred[2] = -1000
+            if board[6][2, 5] == 2:
+                pred[2] = -10000
+            if board[6][2, 5] == 3:
+                pred[2] = -500
+            if board[6][4, 5] == 1:
+                pred[3] = -1000
+            if board[6][4, 5] == 2:
+                pred[3] = -10000
+            if board[6][4, 5] == 3:
+                pred[3] = -500
+
+            action = pred_to_action_greedy(pred)
+        else:
+            action = pred_to_action(pred)
+
+        self.last_action = action
+
+        return action
+
+
+my_agent = ShortSightAgentNoFood()
+
+def agent(obs_dict, config_dict):
+    return my_agent(obs_dict, config_dict)

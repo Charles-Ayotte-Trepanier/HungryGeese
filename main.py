@@ -49,6 +49,9 @@ def transform_sample(samples):
     far_left = np.concatenate([sample['cur_state'][0][5].reshape(1, 14) for sample in samples],
                               axis=0)
 
+    bodies = np.concatenate([sample['cur_state'][0][6].reshape(1, 4) for sample in samples],
+                              axis=0)
+
     step_reward = [sample['step_reward'] for sample in samples]
     food_reward = [sample['food_reward'] for sample in samples]
     step_G = compute_G(step_reward, 0.8)
@@ -57,7 +60,7 @@ def transform_sample(samples):
     g = (g-np.mean(g)) / (np.std(g) + 1E-5)
     y = np.concatenate([sample['action'].reshape(1, 4) for sample in samples], axis=0)
     return [forbidden[train], top[train], right[train], bottom[train], left[train],
-            far_right[train], far_left[train], g[train]], y[train],\
+            far_right[train], far_left[train], bodies[train], g[train]], y[train],\
            [forbidden[test] if len(test) > 0 else np.array([]),
             top[test] if len(test) > 0 else np.array([]),
             right[test] if len(test) > 0 else np.array([]),
@@ -65,6 +68,7 @@ def transform_sample(samples):
             left[test] if len(test) > 0 else np.array([]),
             far_right[test] if len(test) > 0 else np.array([]),
             far_left[test] if len(test) > 0 else np.array([]),
+            bodies[test] if len(test) > 0 else np.array([]),
             g[test] if len(test) > 0 else np.array([])],\
            y[test] if len(test) > 0 else np.array([])
 
@@ -138,7 +142,7 @@ if __name__ == "__main__":
 
     agent = ShortSightAgentNoFood(learning_rate=initial_learning_rate, entropy_reg=0)
     # agent.load_weights('ShortSightAgentNoFood')
-    agent.load_weights("fixed_far_sight")
+    agent.load_weights("best_weights_may14")
     # weights = agent.model.get_weights()
     # weights[0] = np.array([1, -2, -1, -1, 3]).reshape(-1, 1)
     # weights[3] = np.array([1, 0]).reshape(-1, 1)
@@ -160,7 +164,7 @@ if __name__ == "__main__":
         avg_duration = []
         wins = []
         nb_games = 100 * (1+int(float(iteration)/10))
-        nb_games = min(nb_games, 1000)
+        nb_games = 5*min(nb_games, 1000)
         print(f'# games to play: {nb_games}')
         for _ in range(nb_games):
             cur_game, win = run_game(nb_opponents, agent)

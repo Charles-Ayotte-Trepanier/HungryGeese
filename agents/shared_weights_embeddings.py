@@ -29,6 +29,7 @@ class ShortSightAgentNoFood:
     def _build_model(self, lr, entropy_reg):
 
         forbidden_action = Input(shape=(4,))
+        bodies = Input(shape=(4,))
 
         norm_layer = UnitNorm(axis=1)
         embedding = Embedding(5, 1, input_length=21, trainable=True)
@@ -77,10 +78,12 @@ class ShortSightAgentNoFood:
 
         logits = concatenate([left_output, right_output, top_output, bottom_output])
 
-        inputs = [forbidden_action, top, right, bottom, left, far_right, far_left]
+        inputs = [forbidden_action, top, right, bottom, left, far_right, far_left, bodies]
 
         no_action = tf.math.multiply(forbidden_action, -10000)
+        no_action2 = tf.math.multiply(bodies, -10000)
         pred = tf.math.add(logits, no_action)
+        pred = tf.math.add(pred, no_action2)
 
         G = Input(shape=(1, ))
         G_input = [G]
@@ -147,6 +150,7 @@ class ShortSightAgentNoFood:
                                    board[3].reshape(-1, 21),
                                    board[4].reshape(-1, 14),
                                    board[5].reshape(-1, 14),
+                                   board[6].reshape(-1, 4),
                                    np.array([-1]).reshape(-1)])[0].astype('float64')
         if self.greedy:
             action = pred_to_action_greedy(pred)
