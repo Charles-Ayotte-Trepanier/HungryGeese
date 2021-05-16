@@ -193,7 +193,12 @@ class FeaturesCreator:
             bodies[2] = 1
         if board[4, 5] == 2:
             bodies[3] = 1
-        return top, right, bottom, left, bodies
+        distances = np.array([5, 5, 5, 4, 5, 5, 5,
+                              5, 5, 4, 3, 4, 5, 5,
+                              5, 4, 3, 2, 3, 4, 5,
+                              5, 3, 2, 1, 2, 3, 4,
+                              3, 2, 1, 0, 1, 2, 3]).reshape(5, 7)
+        return top, right, bottom, left, bodies, distances
     # def _get_board_section(self, obs_dict, size, food_vector):
     #     board = self._get_board(obs_dict, food_vector)
     #     if size == 1:

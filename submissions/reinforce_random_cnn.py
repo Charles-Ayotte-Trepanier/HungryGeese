@@ -39,8 +39,7 @@ def pred_to_action(pred, logit=True):
 def pred_to_action_greedy(pred):
     pos = np.argmax(pred)
     return actions_list[pos]
-from kaggle_environments.envs.hungry_geese.hungry_geese import row_col, Observation, Action
-import numpy as np
+
 
 def get_encoding(part, food_vector):
     encodings = {
@@ -65,6 +64,7 @@ def goose_encodings(position, goose_length, food_vector):
         part = 'body'
     return get_encoding(part, food_vector)
 
+from kaggle_environments.envs.hungry_geese.hungry_geese import row_col, Observation, Action
 def get_coordinate(position):
     return row_col(position, 11)
 
@@ -199,34 +199,46 @@ class FeaturesCreator:
     def _get_board_sections(self, obs_dict, size, food_vector):
         board = self._get_board(obs_dict, food_vector)
         if size == 1:
-            top = board[2:3, 4:7].reshape(-1)
-            right = board[2:5, 6:7].reshape(-1)
-            bottom = board[4:5, 6:3:-1].reshape(-1)
-            left = board[4:1:-1, 4:5].reshape(-1)
-            far_right = None
-            far_left = None
+            top = board[2:3, 4:7]
+            right = board[2:5, 6:7]
+            bottom = board[4:5, 6:3:-1]
+            left = board[4:1:-1, 4:5]
         if size == 2:
-            top = board[1:3, 3:8].reshape(-1)
-            right = board[1:6, 7:5:-1].T.reshape(-1)
-            bottom = board[5:3:-1, 7:2:-1].reshape(-1)
-            left = board[5:0:-1, 3:5].T.reshape(-1)
-            far_right = None
-            far_left = None
+            top = board[1:3, 3:8]
+            right = board[1:6, 7:5:-1].T
+            bottom = board[5:3:-1, 7:2:-1]
+            left = board[5:0:-1, 3:5].T
         if size == 3:
-            top = board[0:3, 2:9].reshape(-1)
-            right = board[0:7, 8:5:-1].T.reshape(-1)
-            bottom = board[6:3:-1, 8:1:-1].reshape(-1)
-            left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 2:5].T.reshape(-1)
-            far_right = None
-            far_left = None
+            top = board[0:3, 2:9]
+            right = board[0:7, 8:5:-1].T
+            bottom = board[6:3:-1, 8:1:-1]
+            left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 2:5].T
         if size == 4:
-            top = board[0:3, 2:9].reshape(-1)
-            right = board[0:7, 8:5:-1].T.reshape(-1)
-            bottom = board[6:3:-1, 8:1:-1].reshape(-1)
-            left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 2:5].T.reshape(-1)
-            far_right = board[0:7, 10:8:-1].T.reshape(-1)
-            far_left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 0:2].T.reshape(-1)
-        return top, right, bottom, left, far_right, far_left, board
+            top = np.vstack((board[6:7, 2:9], board[0:3, 2:9]))
+            right = board[0:7, 9:5:-1].T
+            bottom = np.vstack((board[0, 8:1:-1], board[6:3:-1, 8:1:-1]))
+            left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 1:5].T
+        if size == 5:
+            top = np.vstack((board[5:7, 2:9], board[0:3, 2:9]))
+            right = board[0:7, 10:5:-1].T
+            bottom = np.vstack((board[np.array([1, 0]), 8:1:-1], board[6:3:-1, 8:1:-1]))
+            left = board[np.array([6, 5, 4, 3, 2, 1, 0]), 0:5].T
+
+        bodies = np.zeros(4)
+        if board[3, 4] == 2:
+            bodies[0] = 1
+        if board[3, 6] == 2:
+            bodies[1] = 1
+        if board[2, 5] == 2:
+            bodies[2] = 1
+        if board[4, 5] == 2:
+            bodies[3] = 1
+        distances = np.array([5, 5, 5, 4, 5, 5, 5,
+                              5, 5, 4, 3, 4, 5, 5,
+                              5, 4, 3, 2, 3, 4, 5,
+                              5, 3, 2, 1, 2, 3, 4,
+                              3, 2, 1, 0, 1, 2, 3]).reshape(5, 7)
+        return top, right, bottom, left, bodies, distances, board
     # def _get_board_section(self, obs_dict, size, food_vector):
     #     board = self._get_board(obs_dict, food_vector)
     #     if size == 1:
@@ -269,136 +281,156 @@ fs = FeaturesCreator()
 def get_state_space(obs_dict, last_action, board_size=0, food_vector=True):
     return fs.get_features(obs_dict, last_action, board_size, food_vector)
 
-
-from tensorflow.keras.layers import Dense, Input, Embedding, Flatten, concatenate
+from tensorflow.keras.layers import Dense, Input, Embedding, Flatten, concatenate, Conv2D
 from tensorflow.keras import Model, Sequential
 import tensorflow as tf
 from tensorflow.keras.constraints import non_neg, UnitNorm
 
+from tensorflow.python.framework.ops import disable_eager_execution
+
 import pickle
 
-class ShortSightAgentNoFood:
+
+class CnnAgent:
     """
     Baseline agent to test reinforce algorithm - state space is only the last action taken,
     with the expectation that it will learn not to take opposite actions
     """
 
-    def __init__(self, greedy=True, learning_rate=0.01, entropy_reg=0):
+    def __init__(self, greedy=False, learning_rate=0.01, entropy_reg=0):
         self.last_action = ['NORTH', 'EAST', 'WEST', 'SOUTH'][np.random.randint(4)]
         self.stateSpace = None
         self.model = self._build_model(learning_rate, entropy_reg)
         self.greedy = greedy
-
-        serialized = b'(lp0\ncnumpy.core.multiarray\n_reconstruct\np1\n(cnumpy\nndarray\np2\n(I0\ntp3\nc_codecs\nencode\np4\n(Vb\np5\nVlatin1\np6\ntp7\nRp8\ntp9\nRp10\n(I1\n(I5\nI1\ntp11\ncnumpy\ndtype\np12\n(Vf4\np13\nI00\nI01\ntp14\nRp15\n(I3\nV<\np16\nNNNI-1\nI-1\nI0\ntp17\nbI00\ng4\n(V\xef\xb3\xb5>\x0e\xa0v\xc0\xde\xee\xb4\xbf\xb6~\x07\xc0-<O@\np18\ng6\ntp19\nRp20\ntp21\nbag1\n(g2\n(I0\ntp22\ng8\ntp23\nRp24\n(I1\n(I21\nI1\ntp25\ng15\nI00\ng4\n(V36\x98\xbe\x08\xa1u\xbeF\xa0\x12@\xde\xc7\xa7>\xd1\xd0\x15@\x18s\xba>\x87X\xaf\xbf\x02\xbc\xaa\xbf\x01\x17\xd1?\xba\xb0\xf4?\xba\xee\xcd@z\x91g?\xfe\xd8\x17@\x02\xea\x95\xbf\xb4Y\x0e?\xf62\x90?\xea\xa9\xa3@\xd1\xdd\x03AnS\xb2@\x1e\xc6\x8d><St\xbf\np26\ng6\ntp27\nRp28\ntp29\nbag1\n(g2\n(I0\ntp30\ng8\ntp31\nRp32\n(I1\n(I14\nI1\ntp33\ng15\nI00\ng4\n(Vq\xc2\x02\xbf\x81\x8b\xad>}\x82z?\xddY\x1f\xbeLh\xc2\xbeA_%\xbf{tX>\x7f\x05\x0c\xbf\xd7\xc8\x17\xbf\xa7\xa3\xa8>(\\u000d\xfc>\xe3\x80d\xbf*\x92B?\x1e`\xb0>\np34\ng6\ntp35\nRp36\ntp37\nbag1\n(g2\n(I0\ntp38\ng8\ntp39\nRp40\n(I1\n(I2\nI1\ntp41\ng15\nI00\ng4\n(V<\xd4\x90?\x1d\xb2D\xbe\np42\ng6\ntp43\nRp44\ntp45\nba.'
+        serialized = b'(lp0\ncnumpy.core.multiarray\n_reconstruct\np1\n(cnumpy\nndarray\np2\n(I0\ntp3\nc_codecs\nencode\np4\n(Vb\np5\nVlatin1\np6\ntp7\nRp8\ntp9\nRp10\n(I1\n(I5\nI1\ntp11\ncnumpy\ndtype\np12\n(Vf4\np13\nI00\nI01\ntp14\nRp15\n(I3\nV<\np16\nNNNI-1\nI-1\nI0\ntp17\nbI00\ng4\n(V\xb0>\x0b\xbf\xbbE\xaf@m\x88P@c\xbc\x0e?\xf4\x9f6\xc0\np18\ng6\ntp19\nRp20\ntp21\nbag1\n(g2\n(I0\ntp22\ng8\ntp23\nRp24\n(I1\n(I6\nI1\ntp25\ng15\nI00\ng4\n(V\x11?\x90@.\x8ew@z\xd1X>\xd8d\x19?6x5\xbfV\xb6\xf3?\np26\ng6\ntp27\nRp28\ntp29\nbag1\n(g2\n(I0\ntp30\ng8\ntp31\nRp32\n(I1\n(I3\nI3\nI1\nI2\ntp33\ng15\nI00\ng4\n(V\xa5\xa1"?\xdf\x08D\xbf\x93\x10 \xbf\xb4\xc5\x93\xbe&+\xe5>R\xfc[\xbfxBk\xbe\xee!\x91\xbe\x98:\xef\xbe\x13\x95\t\xbf\xa9\xfbI\xbf\xefk@\xbf\xdbs\x07>\xe9&\xc7\xbe\xf3G|\xbe\xa6\xb3\xd0\xbej\xcb\x86\xbe\x18j\x0b\xbf\np34\ng6\ntp35\nRp36\ntp37\nbag1\n(g2\n(I0\ntp38\ng8\ntp39\nRp40\n(I1\n(I2\ntp41\ng15\nI00\ng4\n(VY\x17\x99\xbe\x1c\xc1Y=\np42\ng6\ntp43\nRp44\ntp45\nbag1\n(g2\n(I0\ntp46\ng8\ntp47\nRp48\n(I1\n(I2\nI2\nI2\nI2\ntp49\ng15\nI00\ng4\n(VI \x84>\xcbp\xe5=\xdd\x08\xd1\xbe\x94\xb9\xc5;/\xd6F?\xd0\x8af=\xaa]_\xbf\xe2\xeb=>\x1bSv\xbf\x84\xa0s?H\xf3K\xbf\xe0\\u000d*?4\x8b\x97\xbe\x17\xec\xde=\x8d\x87\x8c\xbcDQ ?\np50\ng6\ntp51\nRp52\ntp53\nbag1\n(g2\n(I0\ntp54\ng8\ntp55\nRp56\n(I1\n(I2\ntp57\ng15\nI00\ng4\n(Vh\x88\xf2\xbe\xd0\xf8\x90\xbe\np58\ng6\ntp59\nRp60\ntp61\nbag1\n(g2\n(I0\ntp62\ng8\ntp63\nRp64\n(I1\n(I2\nI2\nI2\nI1\ntp65\ng15\nI00\ng4\n(V\x9f\xbe\xcf\xbe\xfc0`\xbf\x83\x13r\xbf ;\xf7=%n\x91>\xa0\xfc\xc2\xbe\xf6"\xe7>o\xd1\x85\xbf\np66\ng6\ntp67\nRp68\ntp69\nbag1\n(g2\n(I0\ntp70\ng8\ntp71\nRp72\n(I1\n(I1\ntp73\ng15\nI00\ng4\n(V\xee\x19\xf6>\np74\ng6\ntp75\nRp76\ntp77\nbag1\n(g2\n(I0\ntp78\ng8\ntp79\nRp80\n(I1\n(I3\nI4\ntp81\ng15\nI00\ng4\n(V\x05\xb5\x91\xbf\xbe\x9b\x96?\xbbc\xd4\xbd\\u001a%\x19?[.\\u000d\xbfnO\x89?ih\xba>\xa0}b>F\x1e\x15>\x83_r?&\xdc\xb7\xbf8(*\xbe\np82\ng6\ntp83\nRp84\ntp85\nbag1\n(g2\n(I0\ntp86\ng8\ntp87\nRp88\n(I1\n(I4\ntp89\ng15\nI00\ng4\n(V\x14z$>H\xc3\xfa>\x1b\xa6t>|b\x95\xbe\np90\ng6\ntp91\nRp92\ntp93\nbag1\n(g2\n(I0\ntp94\ng8\ntp95\nRp96\n(I1\n(I4\nI1\ntp97\ng15\nI00\ng4\n(Vg\xf9\x84?\xa7w\x87\xbf\xd7\t\x8a>\x979\x1b\xbe\np98\ng6\ntp99\nRp100\ntp101\nba.'
         weights = pickle.loads(serialized)
         self.model.set_weights(weights)
 
     def getStateSpace(self, obs_dict, last_action):
         self.last_action = last_action
-        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 4, False)
+        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 5, False)
         return board, forbidden_action, food_pos
 
     def _build_model(self, lr, entropy_reg):
-        tf.compat.v1.reset_default_graph()
 
         forbidden_action = Input(shape=(4,))
+        bodies = Input(shape=(4,))
 
         norm_layer = UnitNorm(axis=1)
-        embedding = Embedding(5, 1, input_length=21, trainable=True)
+        embedding = Embedding(5, 1, input_length=35, trainable=True)
+        distance_embeddings = Embedding(6, 1, input_length=35, trainable=True)
 
-        top = Input(shape=(21,))
-        right = Input(shape=(21,))
-        bottom = Input(shape=(21,))
-        left = Input(shape=(21,))
 
-        far_right = Input(shape=(14,))
-        far_left = Input(shape=(14,))
 
-        common_linear = Dense(1, activation='linear', use_bias=False, trainable=True)
+        top = Input(shape=(35,))
+        right = Input(shape=(35,))
+        bottom = Input(shape=(35,))
+        left = Input(shape=(35,))
 
-        far_sides_linear = Dense(1, activation='linear', use_bias=False, trainable=True)
-        near_far_weighted = Dense(1, activation='linear', use_bias=False, trainable=True)
-        paddings = tf.constant([[0, 0, ], [0, 7]])
+        distance = Input(shape=(35,))
+        embedded_distances = Flatten()(distance_embeddings(distance))
 
-        def far_sides(input):
-            out = tf.pad(input, paddings, "CONSTANT")
-            out = embedding(out)
-            out = norm_layer(out)
-            out = Flatten()(out)
-            out, _ = tf.split(out, [14, 7], 1)
-            out = far_sides_linear(out)
-            return out
+        cnn1 = Conv2D(2, 3, activation='elu', trainable=True)
+        cnn2 = Conv2D(2, 2, activation='elu', trainable=True)
+        cnn3 = Conv2D(1, 2, activation='elu', trainable=True)
+        dense = Dense(4, activation='elu', trainable=True)
+        linear = Dense(1, activation='linear', use_bias=False, trainable=True)
 
         def common_blocks(input):
             out = embedding(input)
             out = norm_layer(out)
+            out = tf.math.multiply(Flatten()(out), embedded_distances)
+            out = tf.reshape(out, [-1, 5, 7, 1])
+            out = cnn1(out)
+            out = cnn2(out)
+            out = cnn3(out)
             out = Flatten()(out)
-            out = common_linear(out)
-            return out
-
-        def apply_side_layers(near, far):
-            out_near = common_blocks(near)
-            out_far = far_sides(far)
-            concat = concatenate([out_near, out_far])
-            out = near_far_weighted(concat)
+            out = dense(out)
+            out = linear(out)
             return out
 
         top_output = common_blocks(top)
-        right_output = apply_side_layers(right, far_right)
+        right_output = common_blocks(right)
         bottom_output = common_blocks(bottom)
-        left_output = apply_side_layers(left, far_left)
+        left_output = common_blocks(left)
 
         logits = concatenate([left_output, right_output, top_output, bottom_output])
 
-        inputs = [forbidden_action, top, right, bottom, left, far_right, far_left]
+        inputs = [forbidden_action, top, right, bottom, left, bodies, distance]
 
         no_action = tf.math.multiply(forbidden_action, -10000)
+        #no_action2 = tf.math.multiply(bodies, -10000)
         pred = tf.math.add(logits, no_action)
+        #pred = tf.math.add(pred, no_action2)
 
+        G = Input(shape=(1, ))
+        G_input = [G]
 
-        m = Model([inputs] , pred)
+        def custom_loss(y_true, y_pred, G, forbidden_action, bodies):
+            log_softmax = tf.math.log_softmax(y_pred, axis=1)
+            selected_action = tf.math.multiply(y_true, log_softmax)
+            selected_action_weighted = tf.math.multiply(selected_action, G)
+            # selected_action = tf.math.reduce_sum(tf.math.multiply(y_true, log_softmax), axis=1)
+            # selected_action_weighted = tf.math.multiply(tf.reshape(selected_action, [-1]),
+            #                                             tf.reshape(G, [-1]))
+            # no_go = tf.math.maximum(forbidden_action, bodies)
+            no_go = forbidden_action
+            possible_actions = tf.ones(shape=tf.shape(forbidden_action)) - no_go
+            softmax = tf.math.softmax(y_pred)
+            entropy = -tf.reduce_mean(tf.math.multiply(tf.math.multiply(log_softmax, softmax),
+                                                       possible_actions))
+            J = tf.math.reduce_mean(selected_action_weighted) + entropy_reg*entropy
+            l = -J
+            return l
 
+        def reinforce_loss(y_true, y_pred):
+            return custom_loss(y_true, y_pred, G, forbidden_action, bodies)
+
+        cur_loss = reinforce_loss
+
+        m = Model([inputs] + G_input, pred)
+
+        optimizer = tf.keras.optimizers.Adam(lr=lr)
+        m.compile(optimizer=optimizer,
+                  loss=cur_loss,
+                  metrics=[],
+                  experimental_run_tf_function=False)
         return m
 
+    def save_weights(self, name):
+        path = f'/home/charles/PycharmProjects/HungryGeese/models/{name}_weights.pkl'
+        with open(path, 'wb') as f:
+            pickle.dump(self.model.get_weights(), f)
+
+    def load_weights(self, name):
+        path = f'/home/charles/PycharmProjects/HungryGeese/models/{name}_weights.pkl'
+        with open(path, 'rb') as f:
+            weights = pickle.load(f)
+        self.model.set_weights(weights)
+
     def __call__(self, obs_dict, config_dict):
-        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 4, False)
+        board, forbidden_action, food_pos = get_state_space(obs_dict, self.last_action, 5, False)
 
         self.stateSpace = board, forbidden_action, food_pos
 
         pred = self.model.predict([forbidden_action.reshape(-1, 4),
-                                   board[0].reshape(-1, 21),
-                                   board[1].reshape(-1, 21),
-                                   board[2].reshape(-1, 21),
-                                   board[3].reshape(-1, 21),
-                                   board[4].reshape(-1, 14),
-                                   board[5].reshape(-1, 14)])[0].astype('float64')
+                                   board[0].reshape(-1, 35),
+                                   board[1].reshape(-1, 35),
+                                   board[2].reshape(-1, 35),
+                                   board[3].reshape(-1, 35),
+                                   board[4].reshape(-1, 4),
+                                   board[5].reshape(-1, 35),
+                                   np.array([-1]).reshape(-1)])[0].astype('float64')
         if self.greedy:
-            if board[6][3, 4] == 1:
-                pred[0] = -1000
             if board[6][3, 4] == 2:
                 pred[0] = -10000
-            if board[6][3, 4] == 3:
-                pred[0] = -500
-            if board[6][3, 6] == 1:
-                pred[1] = -1000
             if board[6][3, 6] == 2:
                 pred[1] = -10000
-            if board[6][3, 6] == 3:
-                pred[1] = -500
-            if board[6][2, 5] == 1:
-                pred[2] = -1000
             if board[6][2, 5] == 2:
                 pred[2] = -10000
-            if board[6][2, 5] == 3:
-                pred[2] = -500
-            if board[6][4, 5] == 1:
-                pred[3] = -1000
             if board[6][4, 5] == 2:
                 pred[3] = -10000
-            if board[6][4, 5] == 3:
-                pred[3] = -500
 
-            action = pred_to_action_greedy(pred)
         else:
             action = pred_to_action(pred)
 
@@ -407,8 +439,8 @@ class ShortSightAgentNoFood:
         return action
 
 
-my_agent = ShortSightAgentNoFood()
+my_agent = CnnAgent()
+
 
 def agent(obs_dict, config_dict):
     return my_agent(obs_dict, config_dict)
-

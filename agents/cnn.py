@@ -32,26 +32,36 @@ class CnnAgent:
         bodies = Input(shape=(4,))
 
         norm_layer = UnitNorm(axis=1)
-        embedding = Embedding(5, 1, input_length=35, trainable=False)
+        embedding = Embedding(5, 1, input_length=35, trainable=True)
+        distance_embeddings = Embedding(6, 1, input_length=35, trainable=True)
+
+
 
         top = Input(shape=(35,))
         right = Input(shape=(35,))
         bottom = Input(shape=(35,))
         left = Input(shape=(35,))
 
-        cnn1 = Conv2D(2, 2, activation='elu', use_bias=False, trainable=True)
-        cnn2 = Conv2D(1, 2, activation='elu', use_bias=False, trainable=True)
-        common_linear = Dense(1, activation='linear', use_bias=False, trainable=True)
+        distance = Input(shape=(35,))
+        embedded_distances = Flatten()(distance_embeddings(distance))
+
+        cnn1 = Conv2D(2, 3, activation='elu', trainable=True)
+        cnn2 = Conv2D(2, 2, activation='elu', trainable=True)
+        cnn3 = Conv2D(1, 2, activation='elu', trainable=True)
+        dense = Dense(4, activation='elu', trainable=True)
+        linear = Dense(1, activation='linear', use_bias=False, trainable=True)
 
         def common_blocks(input):
             out = embedding(input)
             out = norm_layer(out)
-            out = Flatten()(out)
+            out = tf.math.multiply(Flatten()(out), embedded_distances)
             out = tf.reshape(out, [-1, 5, 7, 1])
             out = cnn1(out)
             out = cnn2(out)
+            out = cnn3(out)
             out = Flatten()(out)
-            out = common_linear(out)
+            out = dense(out)
+            out = linear(out)
             return out
 
         top_output = common_blocks(top)
@@ -61,12 +71,12 @@ class CnnAgent:
 
         logits = concatenate([left_output, right_output, top_output, bottom_output])
 
-        inputs = [forbidden_action, top, right, bottom, left, bodies]
+        inputs = [forbidden_action, top, right, bottom, left, bodies, distance]
 
         no_action = tf.math.multiply(forbidden_action, -10000)
-        no_action2 = tf.math.multiply(bodies, -10000)
+        #no_action2 = tf.math.multiply(bodies, -10000)
         pred = tf.math.add(logits, no_action)
-        pred = tf.math.add(pred, no_action2)
+        #pred = tf.math.add(pred, no_action2)
 
         G = Input(shape=(1, ))
         G_input = [G]
@@ -78,7 +88,8 @@ class CnnAgent:
             # selected_action = tf.math.reduce_sum(tf.math.multiply(y_true, log_softmax), axis=1)
             # selected_action_weighted = tf.math.multiply(tf.reshape(selected_action, [-1]),
             #                                             tf.reshape(G, [-1]))
-            no_go = tf.math.maximum(forbidden_action, bodies)
+            # no_go = tf.math.maximum(forbidden_action, bodies)
+            no_go = forbidden_action
             possible_actions = tf.ones(shape=tf.shape(forbidden_action)) - no_go
             softmax = tf.math.softmax(y_pred)
             entropy = -tf.reduce_mean(tf.math.multiply(tf.math.multiply(log_softmax, softmax),
@@ -133,6 +144,7 @@ class CnnAgent:
                                    board[2].reshape(-1, 35),
                                    board[3].reshape(-1, 35),
                                    board[4].reshape(-1, 4),
+                                   board[5].reshape(-1, 35),
                                    np.array([-1]).reshape(-1)])[0].astype('float64')
         if self.greedy:
             action = pred_to_action_greedy(pred)

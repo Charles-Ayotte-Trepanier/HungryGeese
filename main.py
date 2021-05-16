@@ -16,7 +16,7 @@ config = env.configuration
 
 validation_ratio = 0
 batch_size = 9999999
-epoch = 5
+epoch = 8
 nb_slow_downs = 5
 initial_learning_rate = 0.1
 
@@ -48,21 +48,25 @@ def transform_sample(samples):
     bodies = np.concatenate([sample['cur_state'][0][4].reshape(1, 4) for sample in samples],
                               axis=0)
 
+    distances = np.concatenate([sample['cur_state'][0][5].reshape(1, 35) for sample in samples],
+                               axis=0)
+
     step_reward = [sample['step_reward'] for sample in samples]
     food_reward = [sample['food_reward'] for sample in samples]
-    step_G = compute_G(step_reward, 0.8)
+    step_G = compute_G(step_reward, 0.95)
     food_G = compute_G(food_reward, 0.9)
     g = np.array(step_G).reshape(-1, 1) + np.array(food_G).reshape(-1, 1)
     g = (g-np.mean(g)) / (np.std(g) + 1E-5)
     y = np.concatenate([sample['action'].reshape(1, 4) for sample in samples], axis=0)
     return [forbidden[train], top[train], right[train], bottom[train], left[train],
-             bodies[train], g[train]], y[train],\
+             bodies[train], distances[train], g[train]], y[train],\
            [forbidden[test] if len(test) > 0 else np.array([]),
             top[test] if len(test) > 0 else np.array([]),
             right[test] if len(test) > 0 else np.array([]),
             bottom[test] if len(test) > 0 else np.array([]),
             left[test] if len(test) > 0 else np.array([]),
             bodies[test] if len(test) > 0 else np.array([]),
+            distances[test] if len(test) > 0 else np.array([]),
             g[test] if len(test) > 0 else np.array([])],\
            y[test] if len(test) > 0 else np.array([])
 
@@ -109,13 +113,13 @@ def run_game(nb_opponents, my_agent):
             if (prev_len == 1) and ((observation.step % 40) == 0):
                 no_crash_reward = 0
             else:
-                no_crash_reward = -3
+                no_crash_reward = -1
         else:
             no_crash_reward = 0
 
         if (my_goose_length > prev_len) or \
                 ((my_goose_length == prev_len) and (observation.step % 40) == 0):
-            food_reward = 2
+            food_reward = 0.85
         else:
             food_reward = 0
         prev_len = my_goose_length
@@ -135,10 +139,24 @@ def run_game(nb_opponents, my_agent):
 if __name__ == "__main__":
 
     agent = CnnAgent(learning_rate=initial_learning_rate, entropy_reg=0)
-    # agent.load_weights('ShortSightAgentNoFood')
-    weights = agent.model.get_weights()
-    weights[0] = np.array([-1, 1, 1, 1, -2]).reshape(-1, 1)
-    agent.model.set_weights(weights)
+    agent.load_weights('train_script_weights')
+    # weights = agent.model.get_weights()
+    # weights[0] = np.array([-1, 3, 2, 1, -3]).reshape(-1, 1)
+    # weights[1] = np.array([2, 1.5, 1, 0.8, 0.5, 0.3]).reshape(-1, 1)
+    # agent.model.set_weights(weights)
+    # import pickle
+    # path = f'/home/charles/PycharmProjects/HungryGeese/models/train_script_weights_weights.pkl'
+    # with open(path, 'rb') as f:
+    #     weights = pickle.load(f)
+    # cur_weights[0] = weights[0]
+    # cur_weights[1] = weights[1]
+    # agent.model.set_weights(cur_weights)
+    # random_weights = agent.model.get_weights()
+    # random_weights[0] = weights[0]
+    # random_weights[1] = weights[1]
+    # random_weights[2] = weights[2]
+    # agent.model.set_weights(random_weights)
+
     # weights = agent.model.get_weights()
     # weights[0] = np.array([1, -2, -1, -1, 3]).reshape(-1, 1)
     # weights[3] = np.array([1, 0]).reshape(-1, 1)
@@ -160,7 +178,7 @@ if __name__ == "__main__":
         avg_duration = []
         wins = []
         nb_games = 100 * (1+int(float(iteration)/10))
-        nb_games = min(nb_games, 1000)
+        nb_games = 2*min(nb_games, 1000)
         print(f'# games to play: {nb_games}')
         for _ in range(nb_games):
             cur_game, win = run_game(nb_opponents, agent)
@@ -197,7 +215,7 @@ if __name__ == "__main__":
             agent.load_weights('train_script_weights')
             agent.fit(X_best, y_best, X_val_best, y_val_best, batch_size=batch_size, epoch=epoch)
             i += 1
-            come_back = 5
+            come_back = 2
         else:
             agent.fit(X, y, X_val, y_val, batch_size=batch_size, epoch=epoch)
 

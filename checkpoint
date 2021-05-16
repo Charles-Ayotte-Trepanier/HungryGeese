@@ -1,0 +1,2 @@
+model_checkpoint_path: "over75p_wins"
+all_model_checkpoint_paths: "over75p_wins"
